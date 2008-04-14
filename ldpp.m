@@ -2,7 +2,7 @@ function [bestB, bestP] = ldpp(X, Xid, B0, P0, Pid, varargin)
 %
 % LDPP: Learning Discriminative Projections and Prototypes
 %
-% [bestB, bestP] = ldpp(X, Xid, B0, P0, Pid, ...)
+% [B, P] = ldpp(X, Xid, B0, P0, Pid, ...)
 %
 %   Input:
 %     X       - Data matrix. Each column vector is a data point.
@@ -20,12 +20,12 @@ function [bestB, bestP] = ldpp(X, Xid, B0, P0, Pid, varargin)
 %     'maxI',MAXI                - Maximum number of iterations (default=1000)
 %     'orthonormal',(true|false) - Orthonormal projection base (default=false)
 %     'normalize',(true|false)   - Normalize training data (default=false)
-%     'square',(true|false)      - Squared euclidean distance (default=false)
+%     'squared',(true|false)     - Squared euclidean distance (default=false)
 %     'logfile',FID              - Output log file (default=stderr)
 %
 %   Output:
-%     bestB   - Best projection base
-%     bestP   - Best prototypes
+%     B   - Final learned projection base
+%     P   - Final learned prototypes
 %
 %
 % Reference:
@@ -54,26 +54,28 @@ function [bestB, bestP] = ldpp(X, Xid, B0, P0, Pid, varargin)
 %   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 %
 
-test=false;
-%test=true;
-
 beta=10;
 gamma=1;
 eta=1;
-gamma=0.5;
-eta=10;
 
 epsilon=1e-7;
 minI=100;
 maxI=1000;
-minI=10;
-maxI=10;
 
 orthonormal=false;
-square=false;
+squared=false;
 normalize=false;
 
 logfile=2;
+
+% temporal %
+test=false;
+%test=true;
+gamma=1;
+eta=1000;
+minI=10;
+maxI=10;
+% temporal %
 
 n=1;
 argerr=false;
@@ -87,16 +89,17 @@ while size(varargin,2)>0,
     eval([varargin{n},'=varargin{n+1};']);
     if ~isnumeric(varargin{n+1}) || varargin{n+1}<0,
       argerr=true;
+    else
+      n=n+2;
     end
-    n=n+2;
-  elseif strcmp(varargin{n},'normalize') || strcmp(varargin{n},'square') || ...
+  elseif strcmp(varargin{n},'normalize') || strcmp(varargin{n},'squared') || ...
          strcmp(varargin{n},'orthonormal'),
     eval([varargin{n},'=varargin{n+1};']);
-    orthonormal=varargin{n+1};
     if ~islogical(varargin{n+1}),
       argerr=true;
+    else
+      n=n+2;
     end
-    n=n+2;
   else
     argerr=true;
   end
@@ -110,20 +113,11 @@ D=size(X,1);
 R=size(B0,2);
 M=size(P0,2);
 
-if orthonormal,
-  for n=1:R,
-    for m=1:n-1,
-      B0(:,n)=B0(:,n)-(B0(:,n)'*B0(:,m))*B0(:,m);
-    end
-    B0(:,n)=(1/sqrt(B0(:,n)'*B0(:,n)))*B0(:,n);
-  end
-end
-
 bestB=B0;
 bestP=P0;
 
 if argerr,
-  fprintf(logfile,'ldpp: error: incorrect input argument\n');
+  fprintf(logfile,'ldpp: error: incorrect input argument (%d-%d)\n',n+5,n+6);
 elseif size(Xid,1)~=N,
   fprintf(logfile,'ldpp: error: size of Xid must be the same as the number of data points\n');
 elseif size(Pid,1)~=M,
@@ -135,11 +129,19 @@ elseif size(P0,1)~=D,
 else
 
   if normalize,
-    mu=mean(X,2);
-    sd=std(X,1,2);
-    X=(X-repmat(mu,1,N))./repmat(sd,1,N);
-    P0=(P0-repmat(mu,1,M))./repmat(sd,1,M);
-    B0=B0.*repmat(sd,1,R);
+    xmu=mean(X,2);
+    xsd=std(X,1,2);
+    X=(X-repmat(xmu,1,N))./repmat(xsd,1,N);
+    P0=(P0-repmat(xmu,1,M))./repmat(xsd,1,M);
+  end
+
+  if orthonormal,
+    for n=1:R,
+      for m=1:n-1,
+        B0(:,n)=B0(:,n)-(B0(:,n)'*B0(:,m))*B0(:,m);
+      end
+     B0(:,n)=(1/sqrt(B0(:,n)'*B0(:,n)))*B0(:,n);
+    end
   end
 
   dist=zeros(M,1);
@@ -159,7 +161,7 @@ else
 
   gamma=2*gamma/N;
   eta=2*eta/N;
-  if ~square,
+  if ~squared,
     gamma=gamma/N;
     eta=eta/N;
   end
@@ -186,7 +188,7 @@ else
     end
     ds(ds==0)=realmin;
     dd(dd==0)=realmin;
-    if ~square,
+    if ~squared,
       ds=sqrt(ds);
       dd=sqrt(dd);
     end
@@ -218,7 +220,7 @@ else
     end
 
     J=J0;
-    I=1+I;
+    I=I+1;
 
     ratio=beta.*ratio.*expon./((1+expon).*(1+expon));
     ds=ratio./ds;
@@ -241,6 +243,8 @@ else
 
 
     if test,
+
+    fprintf(logfile,'ldpp: using learning rate balancing\n');
 
     %for g=gamma*[1,2,4,8,16,32],
     for g=gamma,
@@ -329,9 +333,9 @@ else
 
     %fprintf(logfile,'s ------------- %f\n',(J0-JU)/(J0-JL));
 
-    end
+    end % for gamma
 
-    end
+    end % if test
 
 
     B=B-gamma*B0;
@@ -349,8 +353,8 @@ else
   end
 
   if normalize,
-    bestP=bestP.*repmat(sd,1,M)+repmat(mu,1,M);
-    bestB=bestB./repmat(sd,1,R);
+    bestP=bestP.*repmat(xsd,1,M)+repmat(xmu,1,M);
+    bestB=bestB./repmat(xsd,1,R);
   end
 
   fprintf(logfile,'ldpp: best iteration %d, J=%f, error=%f\n',bestI,bestJ,bestE);
