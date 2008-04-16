@@ -18,9 +18,10 @@ function [bestB, bestP] = ldpp(X, Xid, B0, P0, Pid, varargin)
 %     'epsilon',EPSILON          - Convergence criterium (default=1e-7)
 %     'minI',MINI                - Minimum number of iterations (default=100)
 %     'maxI',MAXI                - Maximum number of iterations (default=1000)
-%     'orthonormal',(true|false) - Orthonormal projection base (default=false)
-%     'normalize',(true|false)   - Normalize training data (default=false)
-%     'squared',(true|false)     - Squared euclidean distance (default=false)
+%     'orthonormal',(true|false) - Orthonormal projection base (default=true)
+%     'normalize',(true|false)   - Normalize training data (default=true)
+%     'balance',(true|false)     - Balanced class learning (default=false)
+%     'squared',(true|false)     - Squared euclidean distance (default=true)
 %     'logfile',FID              - Output log file (default=stderr)
 %
 %   Output:
@@ -62,19 +63,16 @@ epsilon=1e-7;
 minI=100;
 maxI=1000;
 
-orthonormal=false;
-squared=false;
-normalize=false;
+orthonormal=true;
+normalize=true;
+balance=false;
+squared=true;
 
 logfile=2;
 
 % temporal %
 test=false;
 %test=true;
-gamma=1;
-eta=1000;
-minI=10;
-maxI=10;
 % temporal %
 
 n=1;
@@ -93,7 +91,7 @@ while size(varargin,2)>0,
       n=n+2;
     end
   elseif strcmp(varargin{n},'normalize') || strcmp(varargin{n},'squared') || ...
-         strcmp(varargin{n},'orthonormal'),
+         strcmp(varargin{n},'orthonormal') || strcmp(varargin{n},'balance'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~islogical(varargin{n+1}),
       argerr=true;
@@ -112,16 +110,19 @@ N=size(X,2);
 D=size(X,1);
 R=size(B0,2);
 M=size(P0,2);
+C=max(size(unique(Pid)));
 
 bestB=B0;
 bestP=P0;
 
 if argerr,
   fprintf(logfile,'ldpp: error: incorrect input argument (%d-%d)\n',n+5,n+6);
-elseif size(Xid,1)~=N,
+elseif max(size(Xid))~=N,
   fprintf(logfile,'ldpp: error: size of Xid must be the same as the number of data points\n');
-elseif size(Pid,1)~=M,
+elseif max(size(Pid))~=M,
   fprintf(logfile,'ldpp: error: size of Pid must be the same as the number of prototypes\n');
+elseif max(size(unique(Xid)))~=C || sum(unique(Xid)~=unique(Pid))~=0,
+  fprintf(logfile,'ldpp: error: there must be the same classes in Xid and Pid, and there must be at least one prototype per class\n');
 elseif size(B0,1)~=D,
   fprintf(logfile,'ldpp: error: dimensionality of base and data must be the same\n');
 elseif size(P0,1)~=D,
@@ -159,14 +160,20 @@ else
   J=1;
   I=0;
 
-  gamma=2*gamma/N;
-  eta=2*eta/N;
+  gamma=2*gamma;
+  eta=2*eta;
   if ~squared,
-    gamma=gamma/N;
-    eta=eta/N;
+    gamma=gamma;
+    eta=eta;
+  end
+  if balance,
+    cfact=zeros(N,1);
+    for c=unique(Pid)',
+      cfact(Xid==c)=1/(C*sum(Xid==c));
+    end
   end
 
-  fprintf(logfile,'ldpp: output: iteration | J | delta(J) | training set error\n');
+  fprintf(logfile,'ldpp: output: iteration | J | delta(J) | error\n');
 
   while 1,
 
@@ -194,7 +201,11 @@ else
     end
     ratio=ds./dd;
     expon=exp(beta*(1-ratio));
-    J0=sum(1./(1+expon))/N;
+    if balance,
+      J0=sum(cfact./(1+expon));
+    else
+      J0=sum(1./(1+expon))/N;
+    end
     E=sum(dd<ds)/N;
 
     fprintf(logfile,'%d\t%f\t%f\t%f\n',I,J0,J0-J,E);
@@ -222,7 +233,11 @@ else
     J=J0;
     I=I+1;
 
-    ratio=beta.*ratio.*expon./((1+expon).*(1+expon));
+    if balance,
+      ratio=cfact.*beta.*ratio.*expon./((1+expon).*(1+expon));
+    else
+      ratio=beta.*ratio.*expon./(N.*(1+expon).*(1+expon));
+    end
     ds=ratio./ds;
     dd=ratio./dd;
     Xs=X-P(:,is);
