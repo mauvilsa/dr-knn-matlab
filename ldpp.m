@@ -70,11 +70,6 @@ squared=true;
 
 logfile=2;
 
-% temporal %
-test=false;
-%test=true;
-% temporal %
-
 n=1;
 argerr=false;
 while size(varargin,2)>0,
@@ -255,103 +250,6 @@ else
     end
     P0=B*Q0;
     B0=Xs*Ys'-Xd*Yd';
-
-
-    if test,
-
-    fprintf(logfile,'ldpp: using learning rate balancing\n');
-
-    %for g=gamma*[1,2,4,8,16,32],
-    for g=gamma,
-
-    B1=B-g*B0;
-    P1=P-g*P0;
-    Y1=B1'*X;
-    Q1=B'*P1;
-    for n=1:N,
-      for m=1:M,
-        distU(m)=(Y1(:,n)-Q(:,m))'*(Y1(:,n)-Q(:,m));
-        distL(m)=(Y(:,n)-Q1(:,m))'*(Y(:,n)-Q1(:,m));
-      end
-      dsn=min(distU(Pid==Xid(n)));
-      ddn=min(distU(Pid~=Xid(n)));
-      isn=find(distU==dsn);
-      idn=find(distU==ddn);
-      dsU(n)=dsn;
-      ddU(n)=ddn;
-      isU(n)=isn(1);
-      idU(n)=idn(1);
-      dsn=min(distL(Pid==Xid(n)));
-      ddn=min(distL(Pid~=Xid(n)));
-      isn=find(distL==dsn);
-      idn=find(distL==ddn);
-      dsL(n)=dsn;
-      ddL(n)=ddn;
-      isL(n)=isn(1);
-      idL(n)=idn(1);
-    end
-    ratioU=dsU./ddU;
-    ratioL=dsL./ddL;
-    exponU=exp(beta*(1-ratioU));
-    exponL=exp(beta*(1-ratioL));
-    JU=sum(1./(1+exponU))/N;
-    JL=sum(1./(1+exponL))/N;
-
-    %fprintf(logfile,'t ------------- %f\n',(J0-JU)/(J0-JL));
-
-    %B1=B-g*B0;
-    %P1=P-g*((J0-JU)/(J0-JL))*P0;
-    %Y1=B1'*X;
-    %Q1=B'*P1;
-    %for n=1:N,
-    %  for m=1:M,
-    %    distU(m)=(Y1(:,n)-Q(:,m))'*(Y1(:,n)-Q(:,m));
-    %    distL(m)=(Y(:,n)-Q1(:,m))'*(Y(:,n)-Q1(:,m));
-    %  end
-    %  dsn=min(distU(Pid==Xid(n)));
-    %  ddn=min(distU(Pid~=Xid(n)));
-    %  isn=find(distU==dsn);
-    %  idn=find(distU==ddn);
-    %  dsU(n)=dsn;
-    %  ddU(n)=ddn;
-    %  isU(n)=isn(1);
-    %  idU(n)=idn(1);
-    %  dsn=min(distL(Pid==Xid(n)));
-    %  ddn=min(distL(Pid~=Xid(n)));
-    %  isn=find(distL==dsn);
-    %  idn=find(distL==ddn);
-    %  dsL(n)=dsn;
-    %  ddL(n)=ddn;
-    %  isL(n)=isn(1);
-    %  idL(n)=idn(1);
-    %end
-    %ratioU=dsU./ddU;
-    %ratioL=dsL./ddL;
-    %exponU=exp(beta*(1-ratioU));
-    %exponL=exp(beta*(1-ratioL));
-    %JU=sum(1./(1+exponU))/N;
-    %JL=sum(1./(1+exponL))/N;
-
-    %fprintf(logfile,'m ------------- %f\n',(J0-JU)/(J0-JL));
-
-    eta=gamma;
-    eta=gamma*(J0-JU)/(J0-JL);
-
-    %ysU=mean(Y-Q(:,is),2);
-    %ydU=mean(Y-Q(:,id),2);
-    %ysL=mean(Y-(1-gamma)*Q(:,is),2);
-    %ydL=mean(Y-(1-gamma)*Q(:,id),2);
-    %exponU=exp(beta*(1-(ysU'*ysU)/(ydU'*ydU)));
-    %exponL=exp(beta*(1-(ysL'*ysL)/(ydL'*ydL)));
-    %JU=sum(1./(1+exponU))/N;
-    %JL=sum(1./(1+exponL))/N;
-
-    %fprintf(logfile,'s ------------- %f\n',(J0-JU)/(J0-JL));
-
-    end % for gamma
-
-    end % if test
-
 
     B=B-gamma*B0;
     P=P-eta*P0;
