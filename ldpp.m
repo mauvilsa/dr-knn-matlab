@@ -155,11 +155,9 @@ else
   J=1;
   I=0;
 
-  gamma=2*gamma;
-  eta=2*eta;
-  if ~squared,
-    gamma=gamma;
-    eta=eta;
+  if squared,
+    gamma=2*gamma;
+    eta=2*eta;
   end
   if balance,
     cfact=zeros(N,1);
