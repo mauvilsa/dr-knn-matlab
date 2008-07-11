@@ -2,19 +2,19 @@ function [bestB, bestP] = ldpp(X, Xid, B0, P0, Pid, varargin)
 %
 % LDPP: Learning Discriminative Projections and Prototypes
 %
-% [B, P] = ldpp(X, Xid, B0, P0, Pid, ...)
+% [B, P] = ldpp(X, Xlabels, B0, P0, Plabels, ...)
 %
 %   Input:
 %     X       - Data matrix. Each column vector is a data point.
-%     Xid     - Data labels.
+%     Xlabels - Data labels.
 %     B0      - Initial projection base.
 %     P0      - Initial prototypes.
-%     Pid     - Prototype labels.
+%     Plabels - Prototype labels.
 %
 %   Input (optional):
 %     'beta',BETA                - Sigmoid slope (defaul=10)
-%     'gamma',GAMMA              - Projection base learning rate (default=1)
-%     'eta',ETA                  - Prototypes learning rate (default=1)
+%     'gamma',GAMMA              - Projection base learning rate (default=0.5)
+%     'eta',ETA                  - Prototypes learning rate (default=100)
 %     'epsilon',EPSILON          - Convergence criterium (default=1e-7)
 %     'minI',MINI                - Minimum number of iterations (default=100)
 %     'maxI',MAXI                - Maximum number of iterations (default=1000)
@@ -56,8 +56,8 @@ function [bestB, bestP] = ldpp(X, Xid, B0, P0, Pid, varargin)
 %
 
 beta=10;
-gamma=1;
-eta=1;
+gamma=0.5;
+eta=100;
 
 epsilon=1e-7;
 minI=100;
