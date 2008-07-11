@@ -1,4 +1,4 @@
-function [bestB, bestP] = ldpp(X, Xid, B0, P0, Pid, varargin)
+function [bestB, bestP] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
 %
 % LDPP: Learning Discriminative Projections and Prototypes
 %
@@ -18,9 +18,10 @@ function [bestB, bestP] = ldpp(X, Xid, B0, P0, Pid, varargin)
 %     'epsilon',EPSILON          - Convergence criterium (default=1e-7)
 %     'minI',MINI                - Minimum number of iterations (default=100)
 %     'maxI',MAXI                - Maximum number of iterations (default=1000)
+%     'prior',PRIOR              - A priori probabilities (default=1/Nc)
+%     'balance',(true|false)     - A priori probabilities = 1/C (default=false)
 %     'orthonormal',(true|false) - Orthonormal projection base (default=true)
 %     'normalize',(true|false)   - Normalize training data (default=true)
-%     'balance',(true|false)     - Balanced class learning (default=false)
 %     'squared',(true|false)     - Squared euclidean distance (default=true)
 %     'logfile',FID              - Output log file (default=stderr)
 %
@@ -35,24 +36,24 @@ function [bestB, bestP] = ldpp(X, Xid, B0, P0, Pid, varargin)
 %   Projection and Prototypes for Nearest-Neighbor Classification."
 %   CVPR'2008.
 %
+% Version: 1.01 -- Jul/2008
+%
 
 %
-%   version 1.0 -- Apr/2008
+% Copyright (C) 2008 Mauricio Villegas (mvillegas AT iti.upv.es)
 %
-%   Copyright (C) 2008 Mauricio Villegas (mvillegas AT iti.upv.es)
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
 %
-%   This program is free software: you can redistribute it and/or modify
-%   it under the terms of the GNU General Public License as published by
-%   the Free Software Foundation, either version 3 of the License, or
-%   (at your option) any later version.
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
 %
-%   This program is distributed in the hope that it will be useful,
-%   but WITHOUT ANY WARRANTY; without even the implied warranty of
-%   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-%   GNU General Public License for more details.
-%
-%   You should have received a copy of the GNU General Public License
-%   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
 %
 
 beta=10;
@@ -78,9 +79,9 @@ while size(varargin,2)>0,
   elseif strcmp(varargin{n},'beta') || strcmp(varargin{n},'gamma') || ...
          strcmp(varargin{n},'eta')  || strcmp(varargin{n},'epsilon') || ...
          strcmp(varargin{n},'minI') || strcmp(varargin{n},'maxI') || ...
-         strcmp(varargin{n},'logfile'),
+         strcmp(varargin{n},'prior') || strcmp(varargin{n},'logfile'),
     eval([varargin{n},'=varargin{n+1};']);
-    if ~isnumeric(varargin{n+1}) || varargin{n+1}<0,
+    if ~isnumeric(varargin{n+1}) || sum(varargin{n+1}<0),
       argerr=true;
     else
       n=n+2;
@@ -105,23 +106,27 @@ N=size(X,2);
 D=size(X,1);
 R=size(B0,2);
 M=size(P0,2);
-C=max(size(unique(Pid)));
+C=max(size(unique(Plabels)));
 
 bestB=B0;
 bestP=P0;
 
 if argerr,
   fprintf(logfile,'ldpp: error: incorrect input argument (%d-%d)\n',n+5,n+6);
-elseif max(size(Xid))~=N,
-  fprintf(logfile,'ldpp: error: size of Xid must be the same as the number of data points\n');
-elseif max(size(Pid))~=M,
-  fprintf(logfile,'ldpp: error: size of Pid must be the same as the number of prototypes\n');
-elseif max(size(unique(Xid)))~=C || sum(unique(Xid)~=unique(Pid))~=0,
-  fprintf(logfile,'ldpp: error: there must be the same classes in Xid and Pid, and there must be at least one prototype per class\n');
+elseif max(size(Xlabels))~=N,
+  fprintf(logfile,'ldpp: error: size of Xlabels must be the same as the number of data points\n');
+elseif max(size(Plabels))~=M,
+  fprintf(logfile,'ldpp: error: size of Plabels must be the same as the number of prototypes\n');
+elseif max(size(unique(Xlabels)))~=C || sum(unique(Xlabels)~=unique(Plabels))~=0,
+  fprintf(logfile,'ldpp: error: there must be the same classes in Xlabels and Plabels, and there must be at least one prototype per class\n');
 elseif size(B0,1)~=D,
   fprintf(logfile,'ldpp: error: dimensionality of base and data must be the same\n');
 elseif size(P0,1)~=D,
   fprintf(logfile,'ldpp: error: dimensionality of prototypes and data must be the same\n');
+elseif exist('prior') && balance,
+  fprintf(logfile,'ldpp: error: either specify the priors or set balance to true, but not both\n');
+elseif exist('prior') && max(size(prior))~=C,
+  fprintf(logfile,'ldpp: error: the size of prior must be the same as the number of classes\n');
 else
 
   if normalize,
@@ -138,6 +143,31 @@ else
       end
      B0(:,n)=(1/sqrt(B0(:,n)'*B0(:,n)))*B0(:,n);
     end
+  end
+
+  if balance,
+    prior=(1/C).*ones(C,1);
+  end
+
+  Xid=zeros(N,1);
+  Pid=zeros(M,1);
+  n=1;
+  for c=unique(Plabels)',
+    Xid(Xlabels==c)=n;
+    Pid(Plabels==c)=n;
+    n=n+1;
+  end
+
+  if ~exist('prior'),
+    prior=ones(C,1);
+    for c=1:C,
+      prior(c)=sum(Xid==c)/N;
+    end
+  end
+
+  cfact=zeros(N,1);
+  for c=1:C,
+    cfact(Xid==c)=prior(c)/sum(Xid==c);
   end
 
   dist=zeros(M,1);
@@ -159,12 +189,6 @@ else
     gamma=2*gamma;
     eta=2*eta;
   end
-  if balance,
-    cfact=zeros(N,1);
-    for c=unique(Pid)',
-      cfact(Xid==c)=1/(C*sum(Xid==c));
-    end
-  end
 
   fprintf(logfile,'ldpp: output: iteration | J | delta(J) | error\n');
 
@@ -177,14 +201,10 @@ else
       for m=1:M,
         dist(m)=(Y(:,n)-Q(:,m))'*(Y(:,n)-Q(:,m));
       end
-      dsn=min(dist(Pid==Xid(n)));
-      ddn=min(dist(Pid~=Xid(n)));
-      isn=find(dist==dsn);
-      idn=find(dist==ddn);
-      ds(n)=dsn;
-      dd(n)=ddn;
-      is(n)=isn(1);
-      id(n)=idn(1);
+      ds(n)=min(dist(Pid==Xid(n)));
+      dd(n)=min(dist(Pid~=Xid(n)));
+      is(n)=find(dist==ds(n),1);
+      id(n)=find(dist==dd(n),1);
     end
     ds(ds==0)=realmin;
     dd(dd==0)=realmin;
@@ -194,15 +214,14 @@ else
     end
     ratio=ds./dd;
     expon=exp(beta*(1-ratio));
-    if balance,
-      J0=sum(cfact./(1+expon));
-    else
-      J0=sum(1./(1+expon))/N;
+    J0=sum(cfact./(1+expon));
+    E=0;
+    for c=1:C,
+      E=E+prior(c)*sum(dd(Xid==c)<ds(Xid==c))/sum(Xid==c);
     end
-    E=sum(dd<ds)/N;
 
     fprintf(logfile,'%d\t%f\t%f\t%f\n',I,J0,J0-J,E);
-
+    
     if J0<=bestJ,
       bestB=B;
       bestP=P;
@@ -226,11 +245,7 @@ else
     J=J0;
     I=I+1;
 
-    if balance,
-      ratio=cfact.*beta.*ratio.*expon./((1+expon).*(1+expon));
-    else
-      ratio=beta.*ratio.*expon./(N.*(1+expon).*(1+expon));
-    end
+    ratio=cfact.*beta.*ratio.*expon./((1+expon).*(1+expon));
     ds=ratio./ds;
     dd=ratio./dd;
     Xs=X-P(:,is);
