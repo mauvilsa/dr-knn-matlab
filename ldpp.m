@@ -23,6 +23,7 @@ function [bestB, bestP] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
 %     'orthonormal',(true|false) - Orthonormal projection base (default=true)
 %     'normalize',(true|false)   - Normalize training data (default=true)
 %     'squared',(true|false)     - Squared euclidean distance (default=true)
+%     'protoweight',(true|false) - Weigth prototype update (default=false)
 %     'logfile',FID              - Output log file (default=stderr)
 %
 %   Output:
@@ -36,7 +37,7 @@ function [bestB, bestP] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
 %   Projection and Prototypes for Nearest-Neighbor Classification."
 %   CVPR'2008.
 %
-% Version: 1.01 -- Jul/2008
+% Version: 1.02 -- Jul/2008
 %
 
 %
@@ -68,6 +69,7 @@ orthonormal=true;
 normalize=true;
 balance=false;
 squared=true;
+protoweight=false;
 
 logfile=2;
 
@@ -87,7 +89,8 @@ while size(varargin,2)>0,
       n=n+2;
     end
   elseif strcmp(varargin{n},'normalize') || strcmp(varargin{n},'squared') || ...
-         strcmp(varargin{n},'orthonormal') || strcmp(varargin{n},'balance'),
+         strcmp(varargin{n},'orthonormal') || strcmp(varargin{n},'balance') || ...
+         strcmp(varargin{n},'protoweight'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~islogical(varargin{n+1}),
       argerr=true;
@@ -263,6 +266,12 @@ else
     end
     P0=B*Q0;
     B0=Xs*Ys'-Xd*Yd';
+
+    if protoweight,
+      for m=1:M,
+        P0(:,m)=P0(:,m)*N/(sum(id==m)+sum(is==m));
+      end
+    end
 
     B=B-gamma*B0;
     P=P-eta*P0;
