@@ -2,7 +2,7 @@ function B = pca(X, varargin)
 %
 % PCA: Principal Component Analysis
 %
-% [B, V] = ldpp(X, ['algorithm'])
+% [B, V] = pca(X, ['algorithm'])
 %
 %   Input:
 %     X       - Data matrix. Each column vector is a data point.
@@ -14,11 +14,12 @@ function B = pca(X, varargin)
 %     'svd'         - Use singular value decomposition of data
 %
 %   Output:
-%     B       - Computed PCA basis
+%     B             - Computed PCA basis
+%
+%
+% Version: 1.00 -- Apr/2008
 %
 
-%
-%   version 1.0 -- Apr/2008
 %
 %   Copyright (C) 2008 Mauricio Villegas (mvillegas AT iti.upv.es)
 %
