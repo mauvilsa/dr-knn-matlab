@@ -1,44 +1,48 @@
-function E = classif_nn(TR, TRid, TE, TEid, varargin)
+function E = classif_nn(TR, TRlabels, TE, TElabels, varargin)
 %
 % CLASSIF_NN: Classify using Nearest Neighbor with the euclidean distance
 %
-% E = classif_nn(TR, TRid, TE, TEid, ...)
+% E = classif_nn(TR, TRlabels, TE, TElabels, ...)
 %
 %   Input:
-%     TR      - Training data matrix. Each column vector is a data point.
-%     TRid    - Training data labels.
-%     TE      - Testing data matrix. Each column vector is a data point.
-%     TEid    - Testing data labels.
+%     TR       - Training data matrix. Each column vector is a data point.
+%     TRlabels - Training data class labels.
+%     TE       - Testing data matrix. Each column vector is a data point.
+%     TElabels - Testing data class labels.
 %
 %   Input (optional):
 %     'perclass',(true|false)   - Compute error for each class (default=false)
+%     'distance',('euclidean'|  - NN distance (default='euclidean')
+%                 'cosine')
 %
 %   Output:
-%     E       - Classification error
+%     E        - Classification error
 %
-% Version: 1.01 -- Jul/2008
+%
+% Version: 1.02 -- Jul/2008
 %
 
 %
-%   Copyright (C) 2008 Mauricio Villegas (mvillegas AT iti.upv.es)
+% Copyright (C) 2008 Mauricio Villegas (mvillegas AT iti.upv.es)
 %
-%   This program is free software: you can redistribute it and/or modify
-%   it under the terms of the GNU General Public License as published by
-%   the Free Software Foundation, either version 3 of the License, or
-%   (at your option) any later version.
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
 %
-%   This program is distributed in the hope that it will be useful,
-%   but WITHOUT ANY WARRANTY; without even the implied warranty of
-%   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-%   GNU General Public License for more details.
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
 %
-%   You should have received a copy of the GNU General Public License
-%   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
 %
 
 [D,N]=size(TR);
 M=size(TE,2);
 
+distance='euclidean';
 perclass=false;
 
 n=1;
@@ -53,6 +57,13 @@ while size(varargin,2)>0,
     else
       n=n+2;
     end
+  elseif strcmp(varargin{n},'distance'),
+    eval([varargin{n},'=varargin{n+1};']);
+    if ~ischar(varargin{n+1}),
+      argerr=true;
+    else
+      n=n+2;
+    end
   else
     argerr=true;
   end
@@ -63,48 +74,101 @@ end
 
 if argerr,
   fprintf(2,'classif_nn: error: incorrect input argument (%d-%d)\n',n+5,n+6);
-elseif size(TRid,1)~=N,
-  fprintf(2,'classif_nn: error: size of TRid must be the same as the number of training points\n');
-elseif size(TEid,1)~=M,
-  fprintf(2,'classif_nn: error: size of TEid must be the same as the number of testing points\n');
+elseif size(TRlabels,1)~=N,
+  fprintf(2,'classif_nn: error: size of TRlabels must be the same as the number of training points\n');
+elseif size(TElabels,1)~=M,
+  fprintf(2,'classif_nn: error: size of TElabels must be the same as the number of testing points\n');
 elseif size(TE,1)~=D,
   fprintf(2,'classif_nn: error: dimensionality of train and test data points must be the same\n');
+elseif ~(strcmp(distance,'euclidean') || strcmp(distance,'cosine')),
+  fprintf(2,'classif_nn: error: invalid distance\n');
 else
+
+  euclidean=true;
+  if strcmp(distance,'cosine'),
+    euclidean=false;
+  end
 
   dist=zeros(N,1);
 
-  if ~perclass,
-  
-    E=0;
-    for m=1:M,
-      for n=1:N,
-        dist(n)=(TR(:,n)-TE(:,m))'*(TR(:,n)-TE(:,m));
-      end
-      if min(dist(TRid==TEid(m)))>min(dist(TRid~=TEid(m))),
-        E=E+1;
-      end
-    end
+  if euclidean,
 
-    E=E/M;
+    if ~perclass,
+
+      E=0;
+      for m=1:M,
+        for n=1:N,
+          dist(n)=(TR(:,n)-TE(:,m))'*(TR(:,n)-TE(:,m));
+        end
+        if min(dist(TRlabels==TElabels(m)))>min(dist(TRlabels~=TElabels(m))),
+          E=E+1;
+        end
+      end
+      E=E/M;
+
+    else
+
+      Clabels=unique(TRlabels)';
+      C=max(size(Clabels));
+      E=zeros(C,1);
+      for m=1:M,
+        for n=1:N,
+          dist(n)=(TR(:,n)-TE(:,m))'*(TR(:,n)-TE(:,m));
+        end
+        if min(dist(TRlabels==TElabels(m)))>min(dist(TRlabels~=TElabels(m))),
+          c=find(Clabels==TElabels(m));
+          E(c)=E(c)+1;
+        end
+      end
+      c=1;
+      for label=Clabels,
+        E(c)=E(c)/sum(TElabels==label);
+        c=c+1;
+      end
+
+    end
 
   else
 
-    Clabels=unique(TRid)';
-    C=max(size(Clabels));
-    E=zeros(C,1);
-    for m=1:M,
-      for n=1:N,
-        dist(n)=(TR(:,n)-TE(:,m))'*(TR(:,n)-TE(:,m));
-      end
-      if min(dist(TRid==TEid(m)))>min(dist(TRid~=TEid(m))),
-        c=find(Clabels==TEid(m));
-        E(c)=E(c)+1;
-      end
+    for n=1:N,
+      TR(:,n)=TR(:,n)./sqrt(TR(:,n)'*TR(:,n));
     end
-    c=1;
-    for label=Clabels,
-      E(c)=E(c)/sum(TEid==label);
-      c=c+1;
+
+    if ~perclass,
+
+      E=0;
+      for m=1:M,
+        TE(:,m)=TE(:,m)./sqrt(TE(:,m)'*TE(:,m));
+        for n=1:N,
+          dist(n)=1-TR(:,n)'*TE(:,m);
+        end
+        if min(dist(TRlabels==TElabels(m)))>min(dist(TRlabels~=TElabels(m))),
+          E=E+1;
+        end
+      end
+      E=E/M;
+
+    else
+
+      Clabels=unique(TRlabels)';
+      C=max(size(Clabels));
+      E=zeros(C,1);
+      for m=1:M,
+        TE(:,m)=TE(:,m)./sqrt(TE(:,m)'*TE(:,m));
+        for n=1:N,
+          dist(n)=1-TR(:,n)'*TE(:,m);
+        end
+        if min(dist(TRlabels==TElabels(m)))>min(dist(TRlabels~=TElabels(m))),
+          c=find(Clabels==TElabels(m));
+          E(c)=E(c)+1;
+        end
+      end
+      c=1;
+      for label=Clabels,
+        E(c)=E(c)/sum(TElabels==label);
+        c=c+1;
+      end
+
     end
 
   end
