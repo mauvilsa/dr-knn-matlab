@@ -6,10 +6,10 @@ function [bestB, bestP] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
 %
 %   Input:
 %     X       - Data matrix. Each column vector is a data point.
-%     Xlabels - Data labels.
+%     Xlabels - Data class labels.
 %     B0      - Initial projection base.
 %     P0      - Initial prototypes.
-%     Plabels - Prototype labels.
+%     Plabels - Prototype class labels.
 %
 %   Input (optional):
 %     'beta',BETA                - Sigmoid slope (defaul=10)
@@ -25,6 +25,8 @@ function [bestB, bestP] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
 %     'squared',(true|false)     - Squared euclidean distance (default=true)
 %     'protoweight',(true|false) - Weigth prototype update (default=false)
 %     'logfile',FID              - Output log file (default=stderr)
+%     'distance',('euclidean'|   - NN distance (default='euclidean')
+%                 'cosine')
 %
 %   Output:
 %     B   - Final learned projection base
@@ -37,7 +39,8 @@ function [bestB, bestP] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
 %   Projection and Prototypes for Nearest-Neighbor Classification."
 %   CVPR'2008.
 %
-% Version: 1.02 -- Jul/2008
+%
+% Version: 1.03 -- Jul/2008
 %
 
 %
@@ -70,6 +73,7 @@ normalize=true;
 balance=false;
 squared=true;
 protoweight=false;
+distance='euclidean';
 
 logfile=2;
 
@@ -97,6 +101,13 @@ while size(varargin,2)>0,
     else
       n=n+2;
     end
+  elseif strcmp(varargin{n},'distance'),
+    eval([varargin{n},'=varargin{n+1};']);
+    if ~ischar(varargin{n+1}),
+      argerr=true;
+    else
+      n=n+2;
+    end
   else
     argerr=true;
   end
@@ -116,10 +127,10 @@ bestP=P0;
 
 if argerr,
   fprintf(logfile,'ldpp: error: incorrect input argument (%d-%d)\n',n+5,n+6);
-elseif max(size(Xlabels))~=N,
-  fprintf(logfile,'ldpp: error: size of Xlabels must be the same as the number of data points\n');
-elseif max(size(Plabels))~=M,
-  fprintf(logfile,'ldpp: error: size of Plabels must be the same as the number of prototypes\n');
+elseif max(size(Xlabels))~=N || min(size(Xlabels))~=1,
+  fprintf(logfile,'ldpp: error: Xlabels must be a vector with size the same as the number of data points\n');
+elseif max(size(Plabels))~=M || min(size(Plabels))~=1,
+  fprintf(logfile,'ldpp: error: Plabels must be a vector with size the same as the number of prototypes\n');
 elseif max(size(unique(Xlabels)))~=C || sum(unique(Xlabels)~=unique(Plabels))~=0,
   fprintf(logfile,'ldpp: error: there must be the same classes in Xlabels and Plabels, and there must be at least one prototype per class\n');
 elseif size(B0,1)~=D,
@@ -130,6 +141,8 @@ elseif exist('prior') && balance,
   fprintf(logfile,'ldpp: error: either specify the priors or set balance to true, but not both\n');
 elseif exist('prior') && max(size(prior))~=C,
   fprintf(logfile,'ldpp: error: the size of prior must be the same as the number of classes\n');
+elseif ~(strcmp(distance,'euclidean') || strcmp(distance,'cosine')),
+  fprintf(logfile,'ldpp: error: invalid distance\n');
 else
 
   if normalize,
@@ -137,6 +150,11 @@ else
     xsd=std(X,1,2);
     X=(X-repmat(xmu,1,N))./repmat(xsd,1,N);
     P0=(P0-repmat(xmu,1,M))./repmat(xsd,1,M);
+    if sum(xsd==0)>0,
+      X(xsd==0,:)=0;
+      P0(xsd==0,:)=0;
+      fprintf(logfile,'ldpp: warning: some dimensions have a standard deviation of zero\n');
+    end
   end
 
   if orthonormal,
@@ -173,6 +191,17 @@ else
     cfact(Xid==c)=prior(c)/sum(Xid==c);
   end
 
+  euclidean=true;
+  if strcmp(distance,'cosine'),
+    squared=false;
+    euclidean=false;
+  end
+
+  if squared,
+    gamma=2*gamma;
+    eta=2*eta;
+  end
+
   dist=zeros(M,1);
   ds=zeros(N,1);
   dd=zeros(N,1);
@@ -188,11 +217,6 @@ else
   J=1;
   I=0;
 
-  if squared,
-    gamma=2*gamma;
-    eta=2*eta;
-  end
-
   fprintf(logfile,'ldpp: output: iteration | J | delta(J) | error\n');
 
   while 1,
@@ -200,21 +224,42 @@ else
     Y=B'*X;
     Q=B'*P;
 
-    for n=1:N,
-      for m=1:M,
-        dist(m)=(Y(:,n)-Q(:,m))'*(Y(:,n)-Q(:,m));
+    if euclidean,
+
+      for n=1:N,
+        for m=1:M,
+          dist(m)=(Y(:,n)-Q(:,m))'*(Y(:,n)-Q(:,m));
+        end
+        ds(n)=min(dist(Pid==Xid(n)));
+        dd(n)=min(dist(Pid~=Xid(n)));
+        is(n)=find(dist==ds(n),1);
+        id(n)=find(dist==dd(n),1);
       end
-      ds(n)=min(dist(Pid==Xid(n)));
-      dd(n)=min(dist(Pid~=Xid(n)));
-      is(n)=find(dist==ds(n),1);
-      id(n)=find(dist==dd(n),1);
+      if ~squared,
+        ds=sqrt(ds);
+        dd=sqrt(dd);
+      end
+
+    else
+      
+      for m=1:M,
+        Q(:,m)=Q(:,m)./sqrt(Q(:,m)'*Q(:,m));
+      end
+      for n=1:N,
+        Y(:,n)=Y(:,n)./sqrt(Y(:,n)'*Y(:,n));
+        for m=1:M,
+          dist(m)=1-Y(:,n)'*Q(:,m);
+        end
+        ds(n)=min(dist(Pid==Xid(n)));
+        dd(n)=min(dist(Pid~=Xid(n)));
+        is(n)=find(dist==ds(n),1);
+        id(n)=find(dist==dd(n),1);
+      end
+
     end
+
     ds(ds==0)=realmin;
     dd(dd==0)=realmin;
-    if ~squared,
-      ds=sqrt(ds);
-      dd=sqrt(dd);
-    end
     ratio=ds./dd;
     expon=exp(beta*(1-ratio));
     J0=sum(cfact./(1+expon));
@@ -251,25 +296,38 @@ else
     ratio=cfact.*beta.*ratio.*expon./((1+expon).*(1+expon));
     ds=ratio./ds;
     dd=ratio./dd;
-    Xs=X-P(:,is);
-    Xd=X-P(:,id);
-    Ys=Y-Q(:,is);
-    Yd=Y-Q(:,id);
 
-    for n=1:N,
-      Ys(:,n)=ds(n)*Ys(:,n);
-      Yd(:,n)=dd(n)*Yd(:,n);
-    end
+    if euclidean,
 
-    for m=1:M,
-      Q0(:,m)=sum(Yd(:,id==m),2)-sum(Ys(:,is==m),2);
+      Ys=(Y-Q(:,is)).*repmat(ds',R,1);
+      Yd=(Y-Q(:,id)).*repmat(dd',R,1);
+      for m=1:M,
+        Q0(:,m)=sum(Yd(:,id==m),2)-sum(Ys(:,is==m),2);
+      end
+      P0=B*Q0;
+      Xs=X-P(:,is);
+      Xd=X-P(:,id);
+      B0=Xs*Ys'-Xd*Yd';
+        
+    else
+
+      Ys=Y.*repmat(ds',R,1);
+      Yd=Y.*repmat(dd',R,1);
+      for m=1:M,
+        Q0(:,m)=sum(Yd(:,id==m),2)-sum(Ys(:,is==m),2);
+      end
+      P0=B*Q0;
+      Y=Q(:,id).*repmat(dd',R,1)-Q(:,is).*repmat(ds',R,1);
+      B0=X*Y'+P(:,id)*Yd'-P(:,is)*Ys';
+
     end
-    P0=B*Q0;
-    B0=Xs*Ys'-Xd*Yd';
 
     if protoweight,
       for m=1:M,
-        P0(:,m)=P0(:,m)*N/(sum(id==m)+sum(is==m));
+        Nm=sum(id==m)+sum(is==m);
+        if Nm>0,
+          P0(:,m)=P0(:,m)*(N/Nm);
+        end
       end
     end
 
@@ -290,6 +348,7 @@ else
   if normalize,
     bestP=bestP.*repmat(xsd,1,M)+repmat(xmu,1,M);
     bestB=bestB./repmat(xsd,1,R);
+    bestB(xsd==0,:)=0;
   end
 
   fprintf(logfile,'ldpp: best iteration %d, J=%f, error=%f\n',bestI,bestJ,bestE);
