@@ -148,8 +148,8 @@ else
   if normalize,
     xmu=mean(X,2);
     xsd=std(X,1,2);
-    X=(X-repmat(xmu,1,N))./repmat(xsd,1,N);
-    P0=(P0-repmat(xmu,1,M))./repmat(xsd,1,M);
+    X=(X-xmu(:,ones(N,1)))./xsd(:,ones(N,1));
+    P0=(P0-xmu(:,ones(M,1)))./xsd(:,ones(M,1));
     if sum(xsd==0)>0,
       X(xsd==0,:)=0;
       P0(xsd==0,:)=0;
@@ -219,6 +219,8 @@ else
 
   fprintf(logfile,'ldpp: output: iteration | J | delta(J) | error\n');
 
+  tic;
+
   while 1,
 
     Y=B'*X;
@@ -269,7 +271,7 @@ else
     end
 
     fprintf(logfile,'%d\t%f\t%f\t%f\n',I,J0,J0-J,E);
-    
+
     if J0<=bestJ,
       bestB=B;
       bestP=P;
@@ -299,8 +301,8 @@ else
 
     if euclidean,
 
-      Ys=(Y-Q(:,is)).*repmat(ds',R,1);
-      Yd=(Y-Q(:,id)).*repmat(dd',R,1);
+      Ys=(Y-Q(:,is)).*ds(:,ones(R,1))';
+      Yd=(Y-Q(:,id)).*dd(:,ones(R,1))';
       for m=1:M,
         Q0(:,m)=sum(Yd(:,id==m),2)-sum(Ys(:,is==m),2);
       end
@@ -311,13 +313,13 @@ else
         
     else
 
-      Ys=Y.*repmat(ds',R,1);
-      Yd=Y.*repmat(dd',R,1);
+      Ys=Y.*ds(:,ones(R,1))';
+      Yd=Y.*dd(:,ones(R,1))';
       for m=1:M,
         Q0(:,m)=sum(Yd(:,id==m),2)-sum(Ys(:,is==m),2);
       end
       P0=B*Q0;
-      Y=Q(:,id).*repmat(dd',R,1)-Q(:,is).*repmat(ds',R,1);
+      Y=Q(:,id).*dd(:,ones(R,1))'-Q(:,is).*ds(:,ones(R,1))';
       B0=X*Y'+P(:,id)*Yd'-P(:,is)*Ys';
 
     end
@@ -345,12 +347,15 @@ else
 
   end
 
+  tm=toc;
+
   if normalize,
-    bestP=bestP.*repmat(xsd,1,M)+repmat(xmu,1,M);
-    bestB=bestB./repmat(xsd,1,R);
+    bestP=bestP.*xsd(:,ones(M,1))+xmu(:,ones(M,1));
+    bestB=bestB./xsd(:,ones(R,1));
     bestB(xsd==0,:)=0;
   end
 
-  fprintf(logfile,'ldpp: best iteration %d, J=%f, error=%f\n',bestI,bestJ,bestE);
+  fprintf(logfile,'ldpp: average iteration time %f\n',tm/I);
+  fprintf(logfile,'ldpp: best iteration %d, J=%f, E=%f\n',bestI,bestJ,bestE);
 
 end
