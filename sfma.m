@@ -183,7 +183,9 @@ else
 
     B0=cPOS'*nPOS-cNEG'*nNEG;
     nPOS=power(nPOS,2).*(1./nPOS-1);
+    nPOS(isnan(nPOS))=0;
     nNEG=power(nNEG,2).*(1./nNEG-1);
+    nNEG(isnan(nNEG))=0;
     P0=cPOS'*((POS-Q(ones(NP,1),:)).*nPOS)-cNEG'*((NEG-Q(ones(NN,1),:)).*nNEG);
     Q0=cNEG'*nNEG-cPOS'*nPOS;
 
