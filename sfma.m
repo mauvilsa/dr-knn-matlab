@@ -20,6 +20,7 @@ function [bestB, bestP, bestQ] = sfma(POS, NEG, B0, P0, Q0, varargin)
 %     'epsilon',EPSILON    - Convergence criterium (default=1e-7)
 %     'minI',MINI          - Minimum number of iterations (default=100)
 %     'maxI',MAXI          - Maximum number of iterations (default=1000)
+%     'approx',AMOUNT      - Use AUC approximation (default=false)
 %     'logfile',FID        - Output log file (default=stderr)
 %
 %   Output:
@@ -28,7 +29,7 @@ function [bestB, bestP, bestQ] = sfma(POS, NEG, B0, P0, Q0, varargin)
 %     Q                    - Final learned sigmoid displacements
 %
 %
-% Version: 1.00 -- Jul/2008
+% Version: 1.01 -- Jul/2008
 %
 
 %
@@ -48,7 +49,7 @@ function [bestB, bestP, bestQ] = sfma(POS, NEG, B0, P0, Q0, varargin)
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.
 %
 
-beta=10;
+beta=50;
 rates=0;
 gamma=0.5;
 rho=0.5;
@@ -57,6 +58,9 @@ sigma=0.5;
 epsilon=1e-7;
 minI=100;
 maxI=1000;
+
+approx=0;
+useapprox=false;
 
 logfile=2;
 
@@ -69,7 +73,7 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'rho')  || strcmp(varargin{n},'sigma') || ...
          strcmp(varargin{n},'minI') || strcmp(varargin{n},'maxI') || ...
          strcmp(varargin{n},'epsilon') || strcmp(varargin{n},'rates') || ...
-         strcmp(varargin{n},'logfile'),
+         strcmp(varargin{n},'approx') || strcmp(varargin{n},'logfile'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~isnumeric(varargin{n+1}) || sum(varargin{n+1}<0),
       argerr=true;
@@ -84,31 +88,59 @@ while size(varargin,2)>0,
   end
 end
 
+D=size(POS,2);
+NP=size(POS,1);
+NN=size(NEG,1);
+overN=1/(NP*NN);
+
 if rates>0,
   gamma=rates;
   rho=rates;
   sigma=rates;
 end
 
-B0=B0./sum(B0);
+if approx>0,
+  useapprox=true;
+  origPOS=POS;
+  origNEG=NEG;
+  origNP=NP;
+  origNN=NN;
+  if approx<1,
+    NP=round(approx*origNP);
+    NN=round(approx*origNN);
+  else
+    NP=min([round(approx),origNP]);
+    NN=min([round(approx),origNN]);
+  end
+  overN=1/(NP*NN);
+end
 
-bestB=B0;
-bestP=P0;
-bestQ=Q0;
-
-D=max(size(B0));
+if islogical(B0) && B0==true,
+  B0=(1/D).*ones(1,D);
+end
+if islogical(P0) && P0==true,
+  P0=3./(std(POS,1,1)+std(NEG,1,1)+std([mean(POS);mean(NEG)],1,1));
+end  
+if islogical(Q0) && Q0==true,
+  Q0=0.5.*(mean(POS)+mean(NEG));
+end
 
 if argerr,
   fprintf(logfile,'sfma: error: incorrect input argument (%d-%d)\n',n+5,n+6);
-elseif size(B0,1)~=1 || size(P0,1)~=1 || size(Q0,1)~=1 || size(P0,2)~=D || size(Q0,2)~=D,
+elseif nargin-size(varargin,2)~=5,
+  fprintf(logfile,'sfma: error: not enough input arguments\n');
+elseif size(B0,1)~=1 || size(P0,1)~=1 || size(Q0,1)~=1 || size(B0,2)~=D || size(P0,2)~=D || size(Q0,2)~=D,
   fprintf(logfile,'sfma: error: B0, P0 and Q0 must be row vectors and have the same dimensionality\n');
 elseif size(POS,2)~=D || size(NEG,2)~=D,
-  fprintf(logfile,'sfma: error: POS and NEG must have the same columns as the dimensionality of B0, P0 and Q0\n');
+  fprintf(logfile,'sfma: error: POS and NEG must have the same columns\n');
 else
 
-  NP=size(POS,1);
-  NN=size(NEG,1);
-  overN=1/(NP*NN);
+  B0(B0<0)=0;
+  B0=B0./sum(B0);
+
+  bestB=B0;
+  bestP=P0;
+  bestQ=Q0;
 
   B=B0;
   P=P0;
@@ -128,11 +160,39 @@ else
 
   while 1,
 
-    nPOS=1./(1+exp(P(ones(NP,1),:).*(Q(ones(NP,1),:)-POS)));
-    fPOS=nPOS*B';
+    if useapprox,
 
-    nNEG=1./(1+exp(P(ones(NN,1),:).*(Q(ones(NN,1),:)-NEG)));
-    fNEG=nNEG*B';
+      nPOS=1./(1+exp(P(ones(origNP,1),:).*(Q(ones(origNP,1),:)-origPOS)));
+      fPOS=nPOS*B';
+      nNEG=1./(1+exp(P(ones(origNN,1),:).*(Q(ones(origNN,1),:)-origNEG)));
+      fNEG=nNEG*B';
+
+      [fPOS,indPOS]=sort(fPOS);
+      [fNEG,indNEG]=sort(fNEG);
+
+      fPOS=fPOS(1:NP);
+      iPOS=indPOS(1:NP);
+      nPOS=nPOS(iPOS,:);
+      POS=origPOS(iPOS,:);
+
+      fNEG=fNEG(origNN-NN+1:origNN);
+      iNEG=indNEG(origNN-NN+1:origNN);
+      nNEG=nNEG(iNEG,:);
+      NEG=origNEG(iNEG,:);
+
+      if mod(I,10)==1,
+        origPOS=origPOS(indPOS,:);
+        origNEG=origNEG(indNEG,:);
+      end
+
+    else
+
+      nPOS=1./(1+exp(P(ones(NP,1),:).*(Q(ones(NP,1),:)-POS)));
+      fPOS=nPOS*B';
+      nNEG=1./(1+exp(P(ones(NN,1),:).*(Q(ones(NN,1),:)-NEG)));
+      fNEG=nNEG*B';
+
+    end
 
     J=0;
     A=0;
@@ -188,13 +248,14 @@ else
     nPOS(isnan(nPOS))=0;
     nNEG=power(nNEG,2).*(1./nNEG-1);
     nNEG(isnan(nNEG))=0;
-    P0=cPOS'*((POS-Q(ones(NP,1),:)).*nPOS)-cNEG'*((NEG-Q(ones(NN,1),:)).*nNEG);
-    Q0=cNEG'*nNEG-cPOS'*nPOS;
+    P0=B.*(cPOS'*((POS-Q(ones(NP,1),:)).*nPOS)-cNEG'*((NEG-Q(ones(NN,1),:)).*nNEG));
+    Q0=B.*P.*(cNEG'*nNEG-cPOS'*nPOS);
 
     B=B+gamma.*overN.*B0;
-    P=P+rho.*overN.*B.*P0;
-    Q=Q+sigma.*overN.*B.*P.*Q0;
+    P=P+rho.*overN.*P0;
+    Q=Q+sigma.*overN.*Q0;
 
+    B(B<0)=0;
     B=B./sum(B);
 
   end
