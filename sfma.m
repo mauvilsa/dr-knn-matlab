@@ -90,6 +90,8 @@ if rates>0,
   sigma=rates;
 end
 
+B0=B0./sum(B0);
+
 bestB=B0;
 bestP=P0;
 bestQ=Q0;
