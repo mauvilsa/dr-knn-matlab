@@ -59,8 +59,7 @@ epsilon=1e-7;
 minI=100;
 maxI=1000;
 
-approx=0;
-useapprox=false;
+approx=false;
 
 logfile=2;
 
@@ -99,30 +98,56 @@ if rates>0,
   sigma=rates;
 end
 
-if approx>0,
-  useapprox=true;
+if islogical(P0) && P0==true,
+  sd=std(POS,1,1)+std(NEG,1,1)+std([mean(POS);mean(NEG)],1,1);
+  if sum(sd==0)>0,
+    D=sum(sd~=0);
+    POS(:,sd==0)=[];
+    NEG(:,sd==0)=[];
+    if ~islogical(B0),
+      B0(sd==0)=[];
+    end
+    if ~islogical(Q0),
+      Q0(sd==0)=[];
+    end
+    fprintf(logfile,'sfma: warning: some dimensions have a standard deviation of zero\n');
+  end
+  P0=3./sd(sd~=0);
+end
+if islogical(B0) && B0==true,
+  B0=(1/D).*ones(1,D);
+end
+if islogical(Q0) && Q0==true,
+  Q0=0.5.*(mean(POS)+mean(NEG));
+end
+
+if ~islogical(approx),
   origPOS=POS;
   origNEG=NEG;
   origNP=NP;
   origNN=NN;
-  if approx<1,
-    NP=round(approx*origNP);
-    NN=round(approx*origNN);
+  if max(size(approx))==1,
+    if approx<1,
+      NP=round(approx*origNP);
+      NN=round(approx*origNN);
+    else
+      NP=min([round(approx),origNP]);
+      NN=min([round(approx),origNN]);
+    end
   else
-    NP=min([round(approx),origNP]);
-    NN=min([round(approx),origNN]);
+    if approx(1)<1,
+      NP=round(approx(1)*origNP);
+    else
+      NP=min([round(approx(1)),origNP]);
+    end
+    if approx(2)<1,
+      NN=round(approx(2)*origNN);
+    else
+      NN=min([round(approx(2)),origNN]);
+    end
   end
   overN=1/(NP*NN);
-end
-
-if islogical(B0) && B0==true,
-  B0=(1/D).*ones(1,D);
-end
-if islogical(P0) && P0==true,
-  P0=3./(std(POS,1,1)+std(NEG,1,1)+std([mean(POS);mean(NEG)],1,1));
-end  
-if islogical(Q0) && Q0==true,
-  Q0=0.5.*(mean(POS)+mean(NEG));
+  approx=true;
 end
 
 if argerr,
@@ -160,7 +185,7 @@ else
 
   while 1,
 
-    if useapprox,
+    if approx,
 
       nPOS=1./(1+exp(P(ones(origNP,1),:).*(Q(ones(origNP,1),:)-origPOS)));
       fPOS=nPOS*B';
@@ -262,7 +287,20 @@ else
 
   tm=toc;
 
-  fprintf(logfile,'sfma: average iteration time %f\n',tm/I);
+  fprintf(logfile,'sfma: average iteration time %f\n',tm/(I+0.5));
   fprintf(logfile,'sfma: best iteration %d, J=%f, AUC=%f\n',bestI,bestJ,bestA);
+
+  if exist('sd'),
+    if sum(sd==0)>0,
+      BPQ=[bestB;bestP;bestQ];
+      D=size(sd,2);
+      bestB=zeros(1,D);
+      bestP=zeros(1,D);
+      bestQ=zeros(1,D);
+      bestB(sd~=0)=BPQ(1,:);
+      bestP(sd~=0)=BPQ(2,:);
+      bestQ(sd~=0)=BPQ(3,:);
+    end
+  end
 
 end
