@@ -229,9 +229,10 @@ else
     if euclidean,
 
       for n=1:N,
-        for m=1:M,
-          dist(m)=(Y(:,n)-Q(:,m))'*(Y(:,n)-Q(:,m));
-        end
+        %for m=1:M,
+        %  dist(m)=(Y(:,n)-Q(:,m))'*(Y(:,n)-Q(:,m));
+        %end
+        dist=sum(power(Y(:,n*ones(M,1))-Q,2),2);
         ds(n)=min(dist(Pid==Xid(n)));
         dd(n)=min(dist(Pid~=Xid(n)));
         is(n)=find(dist==ds(n),1);
