@@ -126,7 +126,9 @@ bestB=B0;
 bestP=P0;
 
 if argerr,
-  fprintf(logfile,'ldpp: error: incorrect input argument (%d-%d)\n',n+5,n+6);
+  fprintf(logfile,'ldpp: error: incorrect input argument (%d-%d)\n',varargin{n},varargin{n+1});
+elseif nargin-size(varargin,2)~=5,
+  fprintf(logfile,'ldpp: error: not enough input arguments\n');
 elseif max(size(Xlabels))~=N || min(size(Xlabels))~=1,
   fprintf(logfile,'ldpp: error: Xlabels must be a vector with size the same as the number of data points\n');
 elseif max(size(Plabels))~=M || min(size(Plabels))~=1,
@@ -229,10 +231,7 @@ else
     if euclidean,
 
       for n=1:N,
-        %for m=1:M,
-        %  dist(m)=(Y(:,n)-Q(:,m))'*(Y(:,n)-Q(:,m));
-        %end
-        dist=sum(power(Y(:,n*ones(M,1))-Q,2),2);
+        dist=sum(power(Y(:,n*ones(M,1))-Q,2));
         ds(n)=min(dist(Pid==Xid(n)));
         dd(n)=min(dist(Pid~=Xid(n)));
         is(n)=find(dist==ds(n),1);
@@ -245,14 +244,11 @@ else
 
     else
       
-      for m=1:M,
-        Q(:,m)=Q(:,m)./sqrt(Q(:,m)'*Q(:,m));
-      end
+      qsd=sqrt(sum(Q.*Q));
+      Q=Q./qsd(ones(R,1),:);
       for n=1:N,
         Y(:,n)=Y(:,n)./sqrt(Y(:,n)'*Y(:,n));
-        for m=1:M,
-          dist(m)=1-Y(:,n)'*Q(:,m);
-        end
+        dist=1-sum(Y(:,n*ones(M,1)).*Q);
         ds(n)=min(dist(Pid==Xid(n)));
         dd(n)=min(dist(Pid~=Xid(n)));
         is(n)=find(dist==ds(n),1);
