@@ -98,24 +98,28 @@ if rates>0,
   sigma=rates;
 end
 
-if islogical(P0) && P0==true,
-  sd=std(POS,1,1)+std(NEG,1,1)+std([mean(POS);mean(NEG)],1,1);
-  if sum(sd==0)>0,
-    D=sum(sd~=0);
-    POS(:,sd==0)=[];
-    NEG(:,sd==0)=[];
-    if ~islogical(B0),
-      B0(sd==0)=[];
-    end
-    if ~islogical(Q0),
-      Q0(sd==0)=[];
-    end
-    fprintf(logfile,'sfma: warning: some dimensions have a standard deviation of zero\n');
+sd=std(POS,1,1)+std(NEG,1,1)+std([mean(POS);mean(NEG)],1,1);
+if sum(sd==0)>0,
+  D=sum(sd~=0);
+  POS(:,sd==0)=[];
+  NEG(:,sd==0)=[];
+  if ~islogical(B0),
+    B0(sd==0)=[];
   end
-  P0=3./sd(sd~=0);
+  if ~islogical(P0),
+    P0(sd==0)=[];
+  end
+  if ~islogical(Q0),
+    Q0(sd==0)=[];
+  end
+  fprintf(logfile,'sfma: warning: some dimensions have a standard deviation of zero\n');
 end
+
 if islogical(B0) && B0==true,
   B0=(1/D).*ones(1,D);
+end
+if islogical(P0) && P0==true,
+  P0=3./sd(sd~=0);
 end
 if islogical(Q0) && Q0==true,
   Q0=0.5.*(mean(POS)+mean(NEG));
@@ -127,7 +131,7 @@ if ~islogical(approx),
   origNP=NP;
   origNN=NN;
   if max(size(approx))==1,
-    if approx<1,
+    if approx<=1,
       NP=round(approx*origNP);
       NN=round(approx*origNN);
     else
@@ -135,12 +139,12 @@ if ~islogical(approx),
       NN=min([round(approx),origNN]);
     end
   else
-    if approx(1)<1,
+    if approx(1)<=1,
       NP=round(approx(1)*origNP);
     else
       NP=min([round(approx(1)),origNP]);
     end
-    if approx(2)<1,
+    if approx(2)<=1,
       NN=round(approx(2)*origNN);
     else
       NN=min([round(approx(2)),origNN]);
@@ -151,7 +155,7 @@ if ~islogical(approx),
 end
 
 if argerr,
-  fprintf(logfile,'sfma: error: incorrect input argument (%d-%d)\n',n+5,n+6);
+  fprintf(logfile,'sfma: error: incorrect input argument (%s,%d)\n',varargin{n},varargin{n+1});
 elseif nargin-size(varargin,2)~=5,
   fprintf(logfile,'sfma: error: not enough input arguments\n');
 elseif size(B0,1)~=1 || size(P0,1)~=1 || size(Q0,1)~=1 || size(B0,2)~=D || size(P0,2)~=D || size(Q0,2)~=D,
@@ -225,6 +229,7 @@ else
 
     for p=1:NP,
       J=J+sum(1./(1+exp(beta*(fNEG-fPOS(p)))));
+      %J=J+sum(1./(1+exp(-beta*(fPOS(p)./fNEG-1)))); %op3
       A=A+sum(fPOS(p)>fNEG);
       AE=AE+sum(fPOS(p)==fNEG);
     end
@@ -266,6 +271,11 @@ else
       fact=beta.*fact./power(1+fact,2);
       cPOS(p)=cPOS(p)+sum(fact);
       cNEG=cNEG+fact;
+      %ratio=fPOS(p)./fNEG; %op3
+      %fact=exp(-beta*(ratio-1)); %op3
+      %fact=beta.*ratio.*fact./power(1+fact,2); %op3
+      %cPOS(p)=cPOS(p)+sum(fact./fPOS); %op3
+      %cNEG=cNEG+fact./fNEG; %op3
     end
 
     B0=cPOS'*nPOS-cNEG'*nNEG;
