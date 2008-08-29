@@ -22,6 +22,8 @@ function [bestB, bestP, bestQ] = sfma(POS, NEG, B0, P0, Q0, varargin)
 %     'maxI',MAXI          - Maximum number of iterations (default=1000)
 %     'approx',AMOUNT      - Use AUC approximation (default=false)
 %     'logfile',FID        - Output log file (default=stderr)
+%     'algorithm',         - Algorithm (default='ratio')
+%       ('ratio'|'diff')
 %
 %   Output:
 %     B                    - Final learned score weights
@@ -60,6 +62,7 @@ minI=100;
 maxI=1000;
 
 approx=false;
+algorithm='diff';
 
 logfile=2;
 
@@ -75,6 +78,13 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'approx') || strcmp(varargin{n},'logfile'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~isnumeric(varargin{n+1}) || sum(varargin{n+1}<0),
+      argerr=true;
+    else
+      n=n+2;
+    end
+  elseif strcmp(varargin{n},'algorithm'),
+    eval([varargin{n},'=varargin{n+1};']);
+    if ~ischar(varargin{n+1}),
       argerr=true;
     else
       n=n+2;
@@ -96,6 +106,12 @@ if rates>0,
   gamma=rates;
   rho=rates;
   sigma=rates;
+end
+
+if strcmp(algorithm,'ratio'),
+  algoratio=true;
+else
+  algoratio=false;
 end
 
 sd=std(POS,1,1)+std(NEG,1,1)+std([mean(POS);mean(NEG)],1,1);
@@ -227,11 +243,18 @@ else
     A=0;
     AE=0;
 
-    for p=1:NP,
-      J=J+sum(1./(1+exp(beta*(fNEG-fPOS(p)))));
-      %J=J+sum(1./(1+exp(-beta*(fPOS(p)./fNEG-1)))); %op3
-      A=A+sum(fPOS(p)>fNEG);
-      AE=AE+sum(fPOS(p)==fNEG);
+    if algoratio,
+      for p=1:NP,
+        J=J+sum(1./(1+exp(-beta*(fPOS(p)./fNEG-1))));
+        A=A+sum(fPOS(p)>fNEG);
+        AE=AE+sum(fPOS(p)==fNEG);
+      end
+    else
+      for p=1:NP,
+        J=J+sum(1./(1+exp(beta*(fNEG-fPOS(p)))));
+        A=A+sum(fPOS(p)>fNEG);
+        AE=AE+sum(fPOS(p)==fNEG);
+      end
     end
 
     J=overN*J;
@@ -266,16 +289,21 @@ else
     cPOS=zeros(NP,1);
     cNEG=zeros(NN,1);
 
-    for p=1:NP,
-      fact=exp(beta*(fNEG-fPOS(p)));
-      fact=beta.*fact./power(1+fact,2);
-      cPOS(p)=cPOS(p)+sum(fact);
-      cNEG=cNEG+fact;
-      %ratio=fPOS(p)./fNEG; %op3
-      %fact=exp(-beta*(ratio-1)); %op3
-      %fact=beta.*ratio.*fact./power(1+fact,2); %op3
-      %cPOS(p)=cPOS(p)+sum(fact./fPOS); %op3
-      %cNEG=cNEG+fact./fNEG; %op3
+    if algoratio,
+      for p=1:NP,
+        ratio=fPOS(p)./fNEG;
+        fact=exp(-beta*(ratio-1));
+        fact=beta.*ratio.*fact./power(1+fact,2);
+        cPOS(p)=cPOS(p)+sum(fact./fPOS(p));
+        cNEG=cNEG+fact./fNEG;
+      end
+    else
+      for p=1:NP,
+        fact=exp(beta*(fNEG-fPOS(p)));
+        fact=beta.*fact./power(1+fact,2);
+        cPOS(p)=cPOS(p)+sum(fact);
+        cNEG=cNEG+fact;
+      end
     end
 
     B0=cPOS'*nPOS-cNEG'*nNEG;
