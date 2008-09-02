@@ -20,6 +20,7 @@ function [bestB, bestP, bestQ] = sfma(POS, NEG, B0, P0, Q0, varargin)
 %     'epsilon',EPSILON    - Convergence criterium (default=1e-7)
 %     'minI',MINI          - Minimum number of iterations (default=100)
 %     'maxI',MAXI          - Maximum number of iterations (default=1000)
+%     'devel',AMOUNT       - Use development set (default=false)
 %     'approx',AMOUNT      - Use AUC approximation (default=false)
 %     'logfile',FID        - Output log file (default=stderr)
 %     'algorithm',         - Algorithm (default='ratio')
@@ -31,7 +32,7 @@ function [bestB, bestP, bestQ] = sfma(POS, NEG, B0, P0, Q0, varargin)
 %     Q                    - Final learned sigmoid displacements
 %
 %
-% Version: 1.01 -- Jul/2008
+% Version: 1.02 -- Sep/2008
 %
 
 %
@@ -62,6 +63,7 @@ minI=100;
 maxI=1000;
 
 approx=false;
+devel=false;
 algorithm='diff';
 
 logfile=2;
@@ -75,7 +77,8 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'rho')  || strcmp(varargin{n},'sigma') || ...
          strcmp(varargin{n},'minI') || strcmp(varargin{n},'maxI') || ...
          strcmp(varargin{n},'epsilon') || strcmp(varargin{n},'rates') || ...
-         strcmp(varargin{n},'approx') || strcmp(varargin{n},'logfile'),
+         strcmp(varargin{n},'devel') || strcmp(varargin{n},'approx') || ...
+         strcmp(varargin{n},'logfile'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~isnumeric(varargin{n+1}) || sum(varargin{n+1}<0),
       argerr=true;
@@ -141,6 +144,21 @@ if islogical(Q0) && Q0==true,
   Q0=0.5.*(mean(POS)+mean(NEG));
 end
 
+if ~islogical(devel),
+  NP=round(NP*(1-devel));
+  NN=round(NN*(1-devel));
+  devPOS=POS(NP+1:end,:);
+  devNEG=NEG(NN+1:end,:);
+  devNP=size(devPOS,1);
+  devNN=size(devNEG,1);
+  POS=POS(1:NP,:);
+  NEG=NEG(1:NN,:);
+  NP=size(POS,1);
+  NN=size(NEG,1);
+  overN=1/(NP*NN);
+  devel=true;
+end
+
 if ~islogical(approx),
   origPOS=POS;
   origNEG=NEG;
@@ -196,14 +214,31 @@ else
   bestI=I;
   bestJ=0;
   bestA=0;
+  bestDevA=0;
+  devA=0;
 
   prevJ=bestJ;
 
-  fprintf(logfile,'sfma: output: iteration | J | delta(J) | AUC\n');
+  if devel,
+    fprintf(logfile,'sfma: output: iteration | J | delta(J) | AUC | develAUC\n');
+  else
+    fprintf(logfile,'sfma: output: iteration | J | delta(J) | AUC\n');
+  end
 
   tic;
 
   while 1,
+
+    if devel,
+      nePOS=1./(1+exp(P(ones(devNP,1),:).*(Q(ones(devNP,1),:)-devPOS)));
+      ePOS=nePOS*B';
+      neNEG=1./(1+exp(P(ones(devNN,1),:).*(Q(ones(devNN,1),:)-devNEG)));
+      eNEG=neNEG*B';
+
+      [scDEV,indDEV]=sort([eNEG;ePOS]);
+      labelDEV=[false(devNN,1);true(devNP,1)];
+      devA=(sum(find(labelDEV(indDEV)))-0.5*devNP*(devNP+1))/(devNP*devNN);
+    end
 
     if approx,
 
@@ -215,6 +250,10 @@ else
       [fPOS,indPOS]=sort(fPOS);
       [fNEG,indNEG]=sort(fNEG);
 
+      [sc,ind]=sort([fNEG;fPOS]);
+      label=[false(origNN,1);true(origNP,1)];
+      A=(sum(find(label(ind)))-0.5*origNP*(origNP+1))./(origNP*origNN);
+
       fPOS=fPOS(1:NP);
       iPOS=indPOS(1:NP);
       nPOS=nPOS(iPOS,:);
@@ -225,11 +264,6 @@ else
       nNEG=nNEG(iNEG,:);
       NEG=origNEG(iNEG,:);
 
-      if mod(I,10)==1,
-        origPOS=origPOS(indPOS,:);
-        origNEG=origNEG(indNEG,:);
-      end
-
     else
 
       nPOS=1./(1+exp(P(ones(NP,1),:).*(Q(ones(NP,1),:)-POS)));
@@ -237,38 +271,42 @@ else
       nNEG=1./(1+exp(P(ones(NN,1),:).*(Q(ones(NN,1),:)-NEG)));
       fNEG=nNEG*B';
 
+      [sc,ind]=sort([fNEG;fPOS]);
+      label=[false(NN,1);true(NP,1)];
+      A=(sum(find(label(ind)))-0.5*NP*(NP+1))./(NP*NN);
+
     end
 
     J=0;
-    A=0;
-    AE=0;
 
     if algoratio,
       for p=1:NP,
         J=J+sum(1./(1+exp(-beta*(fPOS(p)./fNEG-1))));
-        A=A+sum(fPOS(p)>fNEG);
-        AE=AE+sum(fPOS(p)==fNEG);
       end
     else
       for p=1:NP,
         J=J+sum(1./(1+exp(beta*(fNEG-fPOS(p)))));
-        A=A+sum(fPOS(p)>fNEG);
-        AE=AE+sum(fPOS(p)==fNEG);
       end
     end
 
     J=overN*J;
-    A=overN*(A+0.5*AE);
 
-    fprintf(logfile,'%d\t%.8f\t%.8f\t%.8f\n',I,J,J-prevJ,A);
+    if devel,
+      fprintf(logfile,'%d\t%.8f\t%.8f\t%.8f\t%.8f\n',I,J,J-prevJ,A,devA);
+    else
+      fprintf(logfile,'%d\t%.8f\t%.8f\t%.8f\n',I,J,J-prevJ,A);
+    end
 
-    if J>=bestJ,
+    if ( devel && devA>bestDevA ) || ...
+       ( ~devel && A>bestA ) || ...
+       ( ((devel&&devA==bestDevA)||(~devel&&A==bestA)) && J>=bestJ ),
       bestB=B;
       bestP=P;
       bestQ=Q;
       bestI=I;
       bestJ=J;
       bestA=A;
+      bestDevA=devA;
     end
 
     if I>=maxI,
@@ -326,7 +364,11 @@ else
   tm=toc;
 
   fprintf(logfile,'sfma: average iteration time %f\n',tm/(I+0.5));
-  fprintf(logfile,'sfma: best iteration %d, J=%f, AUC=%f\n',bestI,bestJ,bestA);
+  if devel,
+    fprintf(logfile,'sfma: best iteration %d, J=%.8f, AUC=%.8f, devAUC=%.8f\n',bestI,bestJ,bestA,bestDevA);
+  else
+    fprintf(logfile,'sfma: best iteration %d, J=%.8f, AUC=%.8f\n',bestI,bestJ,bestA);
+  end
 
   if exist('sd'),
     if sum(sd==0)>0,
