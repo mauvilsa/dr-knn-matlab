@@ -135,7 +135,8 @@ if sum(sd==0)>0,
 end
 
 if islogical(B0) && B0==true,
-  B0=(1/D).*ones(1,D);
+  %B0=(1/D).*ones(1,D);
+  B0=exp(20.*(auc(POS,NEG)-0.5))-1;
 end
 if islogical(P0) && P0==true,
   P0=3./sd(sd~=0);
@@ -219,6 +220,9 @@ else
 
   prevJ=bestJ;
 
+  better=' *';
+  worse='';
+
   if devel,
     fprintf(logfile,'sfma: output: iteration | J | delta(J) | AUC | develAUC\n');
   else
@@ -291,15 +295,8 @@ else
 
     J=overN*J;
 
-    if devel,
-      fprintf(logfile,'%d\t%.8f\t%.8f\t%.8f\t%.8f\n',I,J,J-prevJ,A,devA);
-    else
-      fprintf(logfile,'%d\t%.8f\t%.8f\t%.8f\n',I,J,J-prevJ,A);
-    end
-
-    if ( devel && devA>bestDevA ) || ...
-       ( ~devel && A>bestA ) || ...
-       ( ((devel&&devA==bestDevA)||(~devel&&A==bestA)) && J>=bestJ ),
+    if ( ~devel && (A>bestA||(A==bestA&&J>=bestJ)) ) || ...
+       ( devel && (devA>bestDevA||(devA==bestDevA&&A>bestA)||(devA==bestDevA&&A==bestA&&J>=bestJ)) ),
       bestB=B;
       bestP=P;
       bestQ=Q;
@@ -307,6 +304,15 @@ else
       bestJ=J;
       bestA=A;
       bestDevA=devA;
+      isbetter=better;
+    else
+      isbetter=worse;
+    end
+
+    if devel,
+      fprintf(logfile,'%d\t%.8f\t%.8f\t%.8f\t%.8f%s\n',I,J,J-prevJ,A,devA,isbetter);
+    else
+      fprintf(logfile,'%d\t%.8f\t%.8f\t%.8f%s\n',I,J,J-prevJ,A,isbetter);
     end
 
     if I>=maxI,
