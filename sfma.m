@@ -135,11 +135,12 @@ if sum(sd==0)>0,
 end
 
 if islogical(B0) && B0==true,
-  %B0=(1/D).*ones(1,D);
-  B0=exp(20.*(auc(POS,NEG)-0.5))-1;
+  B0=power(10,6.*(auc(POS,NEG)-0.5));
 end
 if islogical(P0) && P0==true,
   P0=3./sd(sd~=0);
+  sinv=mean(POS)<mean(NEG);
+  P0(sinv)=-P0(sinv);
 end
 if islogical(Q0) && Q0==true,
   Q0=0.5.*(mean(POS)+mean(NEG));
