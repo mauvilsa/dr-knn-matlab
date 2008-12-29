@@ -53,11 +53,11 @@ function [bestB, bestP] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
 %
 % This program is distributed in the hope that it will be useful,
 % but WITHOUT ANY WARRANTY; without even the implied warranty of
-% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 % GNU General Public License for more details.
 %
 % You should have received a copy of the GNU General Public License
-% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+% along with this program. If not, see <http://www.gnu.org/licenses/>.
 %
 
 beta=10;
@@ -122,9 +122,6 @@ R=size(B0,2);
 M=size(P0,2);
 C=max(size(unique(Plabels)));
 
-bestB=B0;
-bestP=P0;
-
 if argerr,
   fprintf(logfile,'ldpp: error: incorrect input argument (%d-%d)\n',varargin{n},varargin{n+1});
 elseif nargin-size(varargin,2)~=5,
@@ -158,6 +155,20 @@ else
       fprintf(logfile,'ldpp: warning: some dimensions have a standard deviation of zero\n');
     end
   end
+  %if normalize,
+  %  xmu=mean(X,2);
+  %  xsd=std(X,1,2);
+  %  X=(X-xmu(:,ones(N,1)))./xsd(:,ones(N,1));
+  %  P0=(P0-xmu(:,ones(M,1)))./xsd(:,ones(M,1));
+  %  if sum(xsd==0)>0,
+  %    X(xsd==0,:)=[];
+  %    B0(xsd==0,:)=[];
+  %    P0(xsd==0,:)=[];
+  %    D=sum(xsd~=0);
+  %    fprintf(logfile,'ldpp: warning: some dimensions have a standard deviation of zero\n');
+  %    fprintf(logfile,'ldpp: warning: removing these dimensions\n');
+  %  end
+  %end
 
   if orthonormal,
     for n=1:R,
@@ -212,6 +223,8 @@ else
 
   B=B0;
   P=P0;
+  bestB=B0;
+  bestP=P0;
   bestI=0;
   bestJ=1;
   bestE=1;
@@ -351,6 +364,19 @@ else
     bestB=bestB./xsd(:,ones(R,1));
     bestB(xsd==0,:)=0;
   end
+  %if normalize,
+  %  bestP=bestP.*xsd(xsd~=0,ones(M,1))+xmu(xsd~=0,ones(M,1));
+  %  bestB=bestB./xsd(xsd~=0,ones(R,1));
+  %  if sum(xsd==0)>0,
+  %    P=bestP;
+  %    B=bestB;
+  %    D=size(xsd,1);
+  %    bestP=zeros(D,M);
+  %    bestP(xsd~=0,:)=P;
+  %    bestB=zeros(D,R);
+  %    bestB(xsd~=0,:)=B;
+  %  end
+  %end
 
   fprintf(logfile,'ldpp: average iteration time %f\n',tm/I);
   fprintf(logfile,'ldpp: best iteration %d, J=%f, E=%f\n',bestI,bestJ,bestE);
