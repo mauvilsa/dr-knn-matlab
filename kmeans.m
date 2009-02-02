@@ -16,7 +16,7 @@ function [mu, ind] = kmeans(X, K, varargin)
 %     ind     - Indexes of the learned means
 %
 %
-% Version: 1.00 -- Sep/2008
+% Version: 1.01 -- Jan/2009
 %
 
 %
@@ -36,8 +36,12 @@ function [mu, ind] = kmeans(X, K, varargin)
 % along with this program. If not, see <http://www.gnu.org/licenses/>.
 %
 
+if K==1,
+  mu=mean(X,2);
+  return;
+end
+
 maxI=100;
-distance='euclidean';
 logfile=0;
 
 n=1;
@@ -49,13 +53,6 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'maxI') || strcmp(varargin{n},'seed'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~isnumeric(varargin{n+1}),
-      argerr=true;
-    else
-      n=n+2;
-    end
-  elseif strcmp(varargin{n},'distance'),
-    eval([varargin{n},'=varargin{n+1};']);
-    if ~ischar(varargin{n+1}),
       argerr=true;
     else
       n=n+2;
@@ -92,10 +89,8 @@ else
     if exist('seed'),
       rand('seed',seed);
     end
-    ind=round((K-1)*rand(N,1))+1;
-    for k=1:K,
-      mu(:,k)=mean(X(:,ind==k),2);
-    end
+    [k,ind]=sort(rand(N,1));
+    mu=X(:,ind(1:K));
   end
 
   I=0;
@@ -131,7 +126,19 @@ else
       break;
     end
 
-    for k=1:K,
+    kk=unique(ind);
+    if size(kk,1)~=K,
+      if logfile>0,
+        fprintf(logfile,'kmeans: warning: %d empty means, setting them to random samples (I=%d)\n',K-size(kk,1),I);
+      end
+      for k=1:K,
+        if sum(kk==k)==0,
+          mu(:,k)=X(:,round((N-1)*rand)+1);
+        end
+      end
+    end
+
+    for k=kk',
       mu(:,k)=mean(X(:,ind==k),2);
     end
 

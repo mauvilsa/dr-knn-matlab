@@ -1,4 +1,4 @@
-function B = pca(X, varargin)
+function [B, V] = pca(X, varargin)
 %
 % PCA: Principal Component Analysis
 %
