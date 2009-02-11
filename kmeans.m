@@ -10,6 +10,8 @@ function [mu, ind] = kmeans(X, K, varargin)
 %
 %   Input (optional):
 %     'mu0',mu                   - Specify initial means (defaul=false)
+%     'maxI',MAXI                - Maximum number of iterations (default=100)
+%     'seed',SEED                - Random seed (default=system)
 %
 %   Output:
 %     mu      - Final learned means
@@ -68,7 +70,7 @@ end
 N=size(X,2);
 D=size(X,1);
 
-if exist('mu0'),
+if exist('mu0','var'),
   mu=mu0;
 else
   mu=zeros(D,K);
@@ -85,8 +87,8 @@ elseif size(mu,1)~=D || size(mu,2)~=K,
 else
 
   ind=zeros(N,1);
-  if ~exist('mu0'),
-    if exist('seed'),
+  if ~exist('mu0','var'),
+    if exist('seed','var'),
       rand('seed',seed);
     end
     [k,ind]=sort(rand(N,1));

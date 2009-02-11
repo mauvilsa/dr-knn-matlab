@@ -145,9 +145,9 @@ elseif size(B0,1)~=D,
   fprintf(logfile,'ldpp: error: dimensionality of base and data must be the same\n');
 elseif size(P0,1)~=D,
   fprintf(logfile,'ldpp: error: dimensionality of prototypes and data must be the same\n');
-elseif exist('prior')==1 && balance,
+elseif exist('prior','var') && balance,
   fprintf(logfile,'ldpp: error: either specify the priors or set balance to true, but not both\n');
-elseif exist('prior')==1 && max(size(prior))~=C,
+elseif exist('prior','var')==1 && max(size(prior))~=C,
   fprintf(logfile,'ldpp: error: the size of prior must be the same as the number of classes\n');
 elseif ~(strcmp(distance,'euclidean') || strcmp(distance,'cosine')),
   fprintf(logfile,'ldpp: error: invalid distance\n');
@@ -192,7 +192,7 @@ else
     prior=(1/C).*ones(C,1);
   end
 
-  if exist('prior')!=1,
+  if exist('prior','var')!=1,
     prior=ones(C,1);
     for c=1:C,
       prior(c)=sum(Xlabels==c)/N;

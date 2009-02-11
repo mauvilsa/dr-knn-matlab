@@ -377,7 +377,7 @@ else
     fprintf(logfile,'sfma: best iteration %d, J=%.8f, AUC=%.8f\n',bestI,bestJ,bestA);
   end
 
-  if exist('sd'),
+  if exist('sd','var'),
     if sum(sd==0)>0,
       BPQ=[bestB;bestP;bestQ];
       D=size(sd,2);
