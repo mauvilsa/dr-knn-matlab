@@ -18,14 +18,16 @@ function [bestB, bestP] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
 %     'epsilon',EPSILON          - Convergence criterium (default=1e-7)
 %     'minI',MINI                - Minimum number of iterations (default=100)
 %     'maxI',MAXI                - Maximum number of iterations (default=1000)
-%     'prior',PRIOR              - A priori probabilities (default=1/Nc)
+%     'prior',PRIOR              - A priori probabilities (default=Nc/N)
 %     'balance',(true|false)     - A priori probabilities = 1/C (default=false)
 %     'stats',STAT               - Statistics every STAT iterations (default=1000)
 %     'seed',SEED                - Random seed (default=system)
 %     'stochastic',(true|false)  - Stochastic gradient ascend (default=true)
 %     'orthoit',OIT              - Orthonormalize every OIT iterations (default=1)
 %     'orthonormal',(true|false) - Orthonormal projection base (default=true)
+%     'orthogonal',(true|false)  - Orthogonal projection base (default=false)
 %     'normalize',(true|false)   - Normalize training data (default=true)
+%     'whiten',(true|false)      - Whiten the training data (default=false)
 %     'protoweight',(true|false) - Weigth prototype update (default=false)
 %     'logfile',FID              - Output log file (default=stderr)
 %     'distance',('euclidean'|   - NN distance (default='euclidean')
@@ -43,7 +45,7 @@ function [bestB, bestP] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
 %   CVPR'2008.
 %
 %
-% Version: 1.04 -- Jan/2009
+% Version: 1.05 -- Mar/2009
 %
 
 %
@@ -77,7 +79,9 @@ stats=1000;
 orthoit=100;
 
 orthonormal=true;
+orthogonal=false;
 normalize=true;
+whiten=false;
 balance=false;
 protoweight=false;
 distance='euclidean';
@@ -101,9 +105,10 @@ while size(varargin,2)>0,
     else
       n=n+2;
     end
-  elseif strcmp(varargin{n},'normalize') || strcmp(varargin{n},'stochastic') || ...
-         strcmp(varargin{n},'orthonormal') || strcmp(varargin{n},'balance') || ...
-         strcmp(varargin{n},'protoweight'),
+  elseif strcmp(varargin{n},'normalize') || strcmp(varargin{n},'whiten') || ...
+         strcmp(varargin{n},'orthonormal') || strcmp(varargin{n},'orthogonal') || ...
+         strcmp(varargin{n},'balance') || strcmp(varargin{n},'protoweight') || ...
+         strcmp(varargin{n},'stochastic'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~islogical(varargin{n+1}),
       argerr=true;
@@ -147,7 +152,9 @@ elseif size(P0,1)~=D,
   fprintf(logfile,'ldpp: error: dimensionality of prototypes and data must be the same\n');
 elseif exist('prior','var') && balance,
   fprintf(logfile,'ldpp: error: either specify the priors or set balance to true, but not both\n');
-elseif exist('prior','var')==1 && max(size(prior))~=C,
+elseif orthonormal && orthogonal,
+  fprintf(logfile,'ldpp: error: either specify orthonormal or orthogonal, but not both\n');
+elseif exist('prior','var') && max(size(prior))~=C,
   fprintf(logfile,'ldpp: error: the size of prior must be the same as the number of classes\n');
 elseif ~(strcmp(distance,'euclidean') || strcmp(distance,'cosine')),
   fprintf(logfile,'ldpp: error: invalid distance\n');
@@ -165,15 +172,26 @@ else
       P0(xsd==0,:)=[];
       fprintf(logfile,'ldpp: warning: some dimensions have a standard deviation of zero\n');
     end
+  elseif whiten,
+    [W,V]=pca(X);
+    W=W(:,V>1e-9);
+    V=V(V>1e-9);
+    W=W.*repmat((1./sqrt(V))',D,1);
+    W=(1/sqrt(R)).*W;
+    if R==1,
+      W=(1/sqrt(N)).*W;
+    end
+    xmu=mean(X,2);
+    X=W'*(X-xmu(:,ones(N,1)));
+    P0=W'*(P0-xmu(:,ones(M,1)));
+    IW=pinv(W);
+    B0=IW*B0;
   end
 
   if orthonormal,
-    for n=1:R,
-      for m=1:n-1,
-        B0(:,n)=B0(:,n)-(B0(:,n)'*B0(:,m))*B0(:,m);
-      end
-     B0(:,n)=(1/sqrt(B0(:,n)'*B0(:,n)))*B0(:,n);
-    end
+    B0=orthonorm(B0);
+  elseif orthogonal,
+    B0=orthounit(B0);
   end
 
   clab=unique(Plabels);
@@ -192,7 +210,7 @@ else
     prior=(1/C).*ones(C,1);
   end
 
-  if exist('prior','var')!=1,
+  if ~exist('prior','var'),
     prior=ones(C,1);
     for c=1:C,
       prior(c)=sum(Xlabels==c)/N;
@@ -291,15 +309,17 @@ else
       E=E+prior(c)*sum(dd(Xlabels==c)<ds(Xlabels==c))/sum(Xlabels==c);
     end
 
-    fprintf(logfile,'%d\t%f\t%f\t%f\n',I,J,J-J0,E);
-
+    mark='';
     if J<=bestJ,
       bestB=B;
       bestP=P;
       bestI=I;
       bestJ=J;
       bestE=E;
+      mark=' *';
     end
+
+    fprintf(logfile,'%d\t%f\t%f\t%f%s\n',I,J,J-J0,E,mark);
 
     if I>=maxI,
       fprintf(logfile,'ldpp: reached maximum number of iterations\n');
@@ -358,12 +378,9 @@ else
     P=P-eta*P0;
 
     if orthonormal,
-      for n=1:R,
-        for m=1:n-1,
-          B(:,n)=B(:,n)-(B(:,n)'*B(:,m))*B(:,m);
-        end
-        B(:,n)=(1/sqrt(B(:,n)'*B(:,n)))*B(:,n);
-      end
+      B=orthonorm(B);
+    elseif orthogonal,
+      B=orthounit(B);
     end
 
   end
@@ -408,15 +425,17 @@ else
         E=E+prior(c)*sum(dd(Xlabels==c)<ds(Xlabels==c))/sum(Xlabels==c);
       end
 
-      fprintf(logfile,'%d\t%f\t%f\t%f\n',I,J,J-J0,E);
-
+      mark='';
       if J<=bestJ,
         bestB=B;
         bestP=P;
         bestI=I;
         bestJ=J;
         bestE=E;
+        mark=' *';
       end
+
+      fprintf(logfile,'%d\t%f\t%f\t%f%s\n',I,J,J-J0,E,mark);
 
       if I>=maxI,
         fprintf(logfile,'ldpp: reached maximum number of iterations\n');
@@ -480,25 +499,19 @@ else
     P=P-eta*P0;
 
     if orthonormal && mod(I,orthoit)==0,
-      for n=1:R,
-        for m=1:n-1,
-          B(:,n)=B(:,n)-(B(:,n)'*B(:,m))*B(:,m);
-        end
-        B(:,n)=(1/sqrt(B(:,n)'*B(:,n)))*B(:,n);
-      end
+      B=orthonorm(B);
+    elseif orthogonal,
+      B=orthounit(B);
     end
 
   end
 
   if orthonormal,
-    for n=1:R,
-      for m=1:n-1,
-        bestB(:,n)=bestB(:,n)-(bestB(:,n)'*bestB(:,m))*bestB(:,m);
-      end
-      bestB(:,n)=(1/sqrt(bestB(:,n)'*bestB(:,n)))*bestB(:,n);
-    end
+    bestB=orthonorm(bestB);
+  elseif orthogonal,
+    bestB=orthounit(bestB);
   end
-    
+
   end
 
   tm=toc;
@@ -514,6 +527,9 @@ else
       bestB=zeros(D,R);
       bestB(xsd~=0,:)=B;
     end
+  elseif whiten,
+    bestP=IW'*bestP+xmu(:,ones(M,1));
+    bestB=W*bestB;
   end
 
   fprintf(logfile,'ldpp: average iteration time %f\n',tm/I);

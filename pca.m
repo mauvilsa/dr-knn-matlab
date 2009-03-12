@@ -57,14 +57,14 @@ end
 
 switch lower(algorithm),
   case 'covariance'
-    [B,V]=eig(X*X');
+    [B,V]=eig((1/N)*X*X');
     V=real(diag(V));
     [j,i]=sort(-1*V);
     V=V(i);
     B=B(:,i);
   case 'gram'
     epsilon=1e-10;
-    [A,V]=eig(X'*X);
+    [A,V]=eig((1/N)*X'*X);
     V=real(diag(V));
     [j,i]=sort(-1*V);
     V=[V(i);zeros(D-N,1)];
