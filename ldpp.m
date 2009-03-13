@@ -23,7 +23,7 @@ function [bestB, bestP] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
 %     'stats',STAT               - Statistics every STAT iterations (default=1000)
 %     'seed',SEED                - Random seed (default=system)
 %     'stochastic',(true|false)  - Stochastic gradient ascend (default=true)
-%     'orthoit',OIT              - Orthonormalize every OIT iterations (default=1)
+%     'orthoit',OIT              - Orthogonalize every OIT iterations (default=1)
 %     'orthonormal',(true|false) - Orthonormal projection base (default=true)
 %     'orthogonal',(true|false)  - Orthogonal projection base (default=false)
 %     'normalize',(true|false)   - Normalize training data (default=true)
@@ -113,6 +113,17 @@ while size(varargin,2)>0,
     if ~islogical(varargin{n+1}),
       argerr=true;
     else
+      if varargin{n+1}==true,
+        if strcmp(varargin{n},'normalize'),
+          whiten=false;
+        elseif strcmp(varargin{n},'whiten'),
+          normalize=false;
+        elseif strcmp(varargin{n},'orthonormal'),
+          orthogonal=false;
+        elseif strcmp(varargin{n},'orthogonal'),
+          orthonormal=false;
+        end
+      end
       n=n+2;
     end
   elseif strcmp(varargin{n},'distance'),
@@ -152,8 +163,6 @@ elseif size(P0,1)~=D,
   fprintf(logfile,'ldpp: error: dimensionality of prototypes and data must be the same\n');
 elseif exist('prior','var') && balance,
   fprintf(logfile,'ldpp: error: either specify the priors or set balance to true, but not both\n');
-elseif orthonormal && orthogonal,
-  fprintf(logfile,'ldpp: error: either specify orthonormal or orthogonal, but not both\n');
 elseif exist('prior','var') && max(size(prior))~=C,
   fprintf(logfile,'ldpp: error: the size of prior must be the same as the number of classes\n');
 elseif ~(strcmp(distance,'euclidean') || strcmp(distance,'cosine')),
@@ -178,9 +187,6 @@ else
     V=V(V>1e-9);
     W=W.*repmat((1./sqrt(V))',D,1);
     W=(1/sqrt(R)).*W;
-    if R==1,
-      W=(1/sqrt(N)).*W;
-    end
     xmu=mean(X,2);
     X=W'*(X-xmu(:,ones(N,1)));
     P0=W'*(P0-xmu(:,ones(M,1)));
@@ -271,13 +277,13 @@ else
 
   while 1,
 
-    Y=B'*X;
-    Q=B'*P;
+    rX=B'*X;
+    rP=B'*P;
 
     if euclidean,
 
       for n=1:N,
-        dist=sum(power(Y(:,n*ones(M,1))-Q,2));
+        dist=sum(power(rX(:,n*ones(M,1))-rP,2),1);
         ds(n)=min(dist(Plabels==Xlabels(n)));
         dd(n)=min(dist(Plabels~=Xlabels(n)));
         is(n)=find(dist==ds(n),1);
@@ -286,11 +292,11 @@ else
 
     else
       
-      qsd=sqrt(sum(Q.*Q));
-      Q=Q./qsd(ones(R,1),:);
+      rpsd=sqrt(sum(rP.*rP,1));
+      rP=rP./rpsd(ones(R,1),:);
       for n=1:N,
-        Y(:,n)=Y(:,n)./sqrt(Y(:,n)'*Y(:,n));
-        dist=1-sum(Y(:,n*ones(M,1)).*Q);
+        rX(:,n)=rX(:,n)./sqrt(rX(:,n)'*rX(:,n));
+        dist=1-sum(rX(:,n*ones(M,1)).*rP,1);
         ds(n)=min(dist(Plabels==Xlabels(n)));
         dd(n)=min(dist(Plabels~=Xlabels(n)));
         is(n)=find(dist==ds(n),1);
@@ -299,6 +305,7 @@ else
 
     end
 
+    keyboard
     ds(ds==0)=realmin;
     dd(dd==0)=realmin;
     ratio=ds./dd;
@@ -342,26 +349,26 @@ else
 
     if euclidean,
 
-      Ys=(Y-Q(:,is)).*ds(:,ones(R,1))';
-      Yd=(Y-Q(:,id)).*dd(:,ones(R,1))';
+      rXs=(rX-rP(:,is)).*ds(:,ones(R,1))';
+      rXd=(rX-rP(:,id)).*dd(:,ones(R,1))';
       for m=1:M,
-        Q0(:,m)=sum(Yd(:,id==m),2)-sum(Ys(:,is==m),2);
+        rP0(:,m)=sum(rXd(:,id==m),2)-sum(rXs(:,is==m),2);
       end
-      P0=B*Q0;
+      P0=B*rP0;
       Xs=X-P(:,is);
       Xd=X-P(:,id);
-      B0=Xs*Ys'-Xd*Yd';
+      B0=Xs*rXs'-Xd*rXd';
 
     else
 
-      Ys=Y.*ds(:,ones(R,1))';
-      Yd=Y.*dd(:,ones(R,1))';
+      rXs=rX.*ds(:,ones(R,1))';
+      rXd=rX.*dd(:,ones(R,1))';
       for m=1:M,
-        Q0(:,m)=sum(Yd(:,id==m),2)-sum(Ys(:,is==m),2);
+        rP0(:,m)=sum(rXd(:,id==m),2)-sum(rXs(:,is==m),2);
       end
-      P0=B*Q0;
-      Y=Q(:,id).*dd(:,ones(R,1))'-Q(:,is).*ds(:,ones(R,1))';
-      B0=X*Y'+P(:,id)*Yd'-P(:,is)*Ys';
+      P0=B*rP0;
+      rX=rP(:,id).*dd(:,ones(R,1))'-rP(:,is).*ds(:,ones(R,1))';
+      B0=X*rX'+P(:,id)*rXd'-P(:,is)*rXs';
 
     end
 
@@ -391,24 +398,24 @@ else
 
     if mod(I,stats)==0,
 
-      Y=B'*X;
-      Q=B'*P;
+      rX=B'*X;
+      rP=B'*P;
 
       if euclidean,
 
         for n=1:N,
-          dist=sum(power(Y(:,n*ones(M,1))-Q,2));
+          dist=sum(power(rX(:,n*ones(M,1))-rP,2),1);
           ds(n)=min(dist(Plabels==Xlabels(n)));
           dd(n)=min(dist(Plabels~=Xlabels(n)));
         end
 
       else
 
-        qsd=sqrt(sum(Q.*Q));
-        Q=Q./qsd(ones(R,1),:);
+        rpsd=sqrt(sum(rP.*rP,1));
+        rP=rP./rpsd(ones(R,1),:);
         for n=1:N,
-          Y(:,n)=Y(:,n)./sqrt(Y(:,n)'*Y(:,n));
-          dist=1-sum(Y(:,n*ones(M,1)).*Q);
+          rX(:,n)=rX(:,n)./sqrt(rX(:,n)'*rX(:,n));
+          dist=1-sum(rX(:,n*ones(M,1)).*rP,1);
           ds(n)=min(dist(Plabels==Xlabels(n)));
           dd(n)=min(dist(Plabels~=Xlabels(n)));
         end
@@ -458,18 +465,18 @@ else
     c=sum(rand>cumprior)+1;
     n=cnc(c)+round((nc(c)-1)*rand)+1;
 
-    Y=B'*X(:,n);
-    Q=B'*P;
+    rX=B'*X(:,n);
+    rP=B'*P;
 
     if euclidean,
-      dist=sum(power(Y(:,ones(M,1))-Q,2));
+      dist=sum(power(rX(:,ones(M,1))-rP,2),1);
       dsn=min(dist(Plabels==Xlabels(n)));
       ddn=min(dist(Plabels~=Xlabels(n)));
     else
-      qsd=sqrt(sum(Q.*Q));
-      Q=Q./qsd(ones(R,1),:);
-      Y=Y./sqrt(Y'*Y);
-      dist=1-sum(Y(:,n*ones(M,1)).*Q);
+      rpsd=sqrt(sum(rP.*rP,1));
+      rP=rP./rpsd(ones(R,1),:);
+      rX=rX./sqrt(rX'*rX);
+      dist=1-sum(rX(:,n*ones(M,1)).*rP,1);
       dsn=min(dist(Plabels==Xlabels(n)));
       ddn=min(dist(Plabels~=Xlabels(n)));
     end
@@ -484,15 +491,15 @@ else
     ddn=sigm./ddn;
 
     if euclidean,
-      B0=dsn.*(X(:,n)-P(:,is))*(Y-Q(:,is))'-ddn.*(X(:,n)-P(:,id))*(Y-Q(:,id))';
+      B0=dsn.*(X(:,n)-P(:,is))*(rX-rP(:,is))'-ddn.*(X(:,n)-P(:,id))*(rX-rP(:,id))';
       P0=zeros(size(P));
-      P0(:,is)=-dsn.*B*(Y-Q(:,is));
-      P0(:,id)= ddn.*B*(Y-Q(:,id));
+      P0(:,is)=-dsn.*B*(rX-rP(:,is));
+      P0(:,id)= ddn.*B*(rX-rP(:,id));
     else
-      B0=-dsn.*(X(:,n)*Q(:,is)'+P(:,is)*Y')+ddn.*(X(:,n)*Q(:,id)'+P(:,id)*Y');
+      B0=-dsn.*(X(:,n)*rP(:,is)'+P(:,is)*rX')+ddn.*(X(:,n)*rP(:,id)'+P(:,id)*rX');
       P0=zeros(size(P));
-      P0(:,is)=-dsn.*B*Y;
-      P0(:,id)= ddn.*B*Y;
+      P0(:,is)=-dsn.*B*rX;
+      P0(:,id)= ddn.*B*rX;
     end
 
     B=B-gamma*B0;
