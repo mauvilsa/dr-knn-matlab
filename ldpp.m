@@ -305,7 +305,6 @@ else
 
     end
 
-    keyboard
     ds(ds==0)=realmin;
     dd(dd==0)=realmin;
     ratio=ds./dd;
@@ -326,7 +325,7 @@ else
       mark=' *';
     end
 
-    fprintf(logfile,'%d\t%f\t%f\t%f%s\n',I,J,J-J0,E,mark);
+    fprintf(logfile,'%d\t%.9f\t%.9f\t%f%s\n',I,J,J-J0,E,mark);
 
     if I>=maxI,
       fprintf(logfile,'ldpp: reached maximum number of iterations\n');
@@ -442,7 +441,7 @@ else
         mark=' *';
       end
 
-      fprintf(logfile,'%d\t%f\t%f\t%f%s\n',I,J,J-J0,E,mark);
+      fprintf(logfile,'%d\t%.9f\t%.9f\t%f%s\n',I,J,J-J0,E,mark);
 
       if I>=maxI,
         fprintf(logfile,'ldpp: reached maximum number of iterations\n');
