@@ -348,16 +348,25 @@ else
 
     if euclidean,
 
+      %rXs=(rX-rP(:,is)).*ds(:,ones(R,1))';
+      %rXd=(rX-rP(:,id)).*dd(:,ones(R,1))';
+      %for m=1:M,
+      %  rP0(:,m)=sum(rXd(:,id==m),2)-sum(rXs(:,is==m),2);
+      %end
+      %P0=B*rP0;
+      %Xs=X-P(:,is);
+      %Xd=X-P(:,id);
+      %B0=Xs*rXs'-Xd*rXd';
+
       rXs=(rX-rP(:,is)).*ds(:,ones(R,1))';
       rXd=(rX-rP(:,id)).*dd(:,ones(R,1))';
+      fX=rXs-rXd;
       for m=1:M,
-        rP0(:,m)=sum(rXd(:,id==m),2)-sum(rXs(:,is==m),2);
+        fP(:,m)=sum(rXd(:,id==m),2)-sum(rXs(:,is==m),2);
       end
-      P0=B*rP0;
-      Xs=X-P(:,is);
-      Xd=X-P(:,id);
-      B0=Xs*rXs'-Xd*rXd';
-
+      P0=B*fP;
+      B0=X*fX'+P*fP';
+      
     else
 
       rXs=rX.*ds(:,ones(R,1))';
