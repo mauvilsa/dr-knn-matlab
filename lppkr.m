@@ -35,7 +35,7 @@ function [bestB, bestP] = lppkr(X, XX, B0, P0, PP, varargin)
 %     P   - Final learned prototypes
 %
 %
-% Version: 1.01 -- Sep/2009
+% Version: 1.02 -- Sep/2009
 %
 
 %
@@ -259,47 +259,28 @@ else
 
       if euclidean,
 
-        %tic
-        %for n=1:N,
-        %  dist(:,n)=exp(-sum(power(rX(:,n*ones(M,1))-rP,2),1));
-        %  S(n)=sum(dist(:,n));
-        %  mXX(:,n)=sum(dist(:,n*ones(DD,1))'.*PP,2)./S(n);
-        %end
-        %toc
+        %dist=reshape(exp(-sum(power(repmat(rX,1,M)-rP(:,ind),2),1)),N,M); %%% g(d)=exp(-d)
+        dist=sum(power(repmat(rX,1,M)-rP(:,ind),2),1); dist(dist==0)=realmin; dist=reshape(1./dist,N,M); %%% g(d)=1/d
 
-        %tic
-        dist=reshape(exp(-sum(power(repmat(rX,1,M)-rP(:,ind),2),1)),N,M);
-        S=sum(dist,2);
-        mXX=(reshape(sum(repmat(dist,DD,1).*PP(ind2,:),2),N,DD)./S(:,ones(DD,1)))';
-        %toc
+      else % cosine
 
-      %else % cosine
-
-        %rpsd=sqrt(sum(rP.*rP,1));
-        %rP=rP./rpsd(ones(R,1),:);
-        %for n=1:N,
-        %  rX(:,n)=rX(:,n)./sqrt(rX(:,n)'*rX(:,n));
-        %  dist(:,n)=exp(-(1-sum(rX(:,n*ones(M,1)).*rP,1)));
-        %  S(n)=sum(dist(:,n));
-        %  mXX(:,n)=sum(dist(:,n*ones(DD,1))'.*PP,2)./S(n);
-        %end
-
-        % faster implementation not working yet
-        %rpsd=sqrt(sum(rP.*rP,1));
-        %rP=rP./rpsd(ones(R,1),:);
-        %rxsd=sqrt(sum(rX.*rX,1));
-        %rX=rX./rxsd(ones(R,1),:);
-        %dist2=reshape(exp(-(1-sum(repmat(rX,1,M).*rP(:,ind),1))),N,M);
-        %S2=sum(dist2,2);
-        %mXX2=(reshape(sum(repmat(dist2,DD,1).*PP(ind2,:),2),N,DD)./S(:,ones(DD,1)))';
+        rpsd=sqrt(sum(rP.*rP,1));
+        rP=rP./rpsd(ones(R,1),:);
+        rxsd=sqrt(sum(rX.*rX,1));
+        rX=rX./rxsd(ones(R,1),:);
+        %dist=reshape(exp(-(1-sum(repmat(rX,1,M).*rP(:,ind),1))),N,M); %%% g(d)=exp(-d)
+        dist=1-sum(repmat(rX,1,M).*rP(:,ind),1); dist(dist==0)=realmin; dist=reshape(1./dist,N,M); %%% g(d)=1/d
 
       end
+
+      S=sum(dist,2);
+      mXX=(reshape(sum(repmat(dist,DD,1).*PP(ind2,:),2),N,DD)./S(:,ones(DD,1)))';
+      dist=dist.*dist; %%% g(d)=1/d
 
       dXX=mXX-XX;
       tanhXX=tanh(beta*sum(dXX.*dXX,1))';
       J=sum(tanhXX)/N;
-      E=sum(sum(dXX.*dXX,2).*ppsd)/NDD;
-      %E=sum(sum(dXX.*dXX))/NDD;
+      E=sqrt(sum(sum(dXX.*dXX,2).*ppsd)/NDD);
 
       mark='';
       if J<=bestJ,
@@ -330,32 +311,24 @@ else
 
       if euclidean,
 
-        %tic
-        %fX=zeros(R,N);
-        %fP=zeros(R,M);
-        %for n=1:N,
-        %  sump=dist(n,:).*sum(dXX(:,n*ones(M,1)).*(mXX(:,n*ones(M,1))-PP),1);
-        %  sump=sump.*((tanhXX(n)*tanhXX(n)-1)/S(n));
-        %  frP=sump(ones(R,1),:).*(rX(:,n*ones(M,1))-rP);
-        %  fP=fP-frP;
-        %  fX(:,n)=fX(:,n)+sum(frP,2);
-        %end
-        %toc
-
-        %tic
-        fact=repmat((tanhXX.*tanhXX-1)./S,M,1).*dist(:).*sum(repmat(dXX,1,M).*(repmat(mXX,1,M)-PP(:,ind)),1)';
+        fact=repmat((1-tanhXX.*tanhXX)./S,M,1).*dist(:).*sum(repmat(dXX,1,M).*(repmat(mXX,1,M)-PP(:,ind)),1)';
         fact=reshape(fact(:,ones(R,1))'.*(repmat(rX,1,M)-rP(:,ind)),[R N M]);
         fP=-permute(sum(fact,2),[1 3 2]);
         fX=sum(fact,3);
-        %toc
 
-        P0=B*fP;
-        B0=X*fX'+P*fP';
+      else % cosine
+
+        fact=repmat((1-tanhXX.*tanhXX)./S,M,1).*dist(:).*sum(repmat(dXX,1,M).*(repmat(mXX,1,M)-PP(:,ind)),1)';
+        fP=-permute(sum(reshape(fact(:,ones(R,1))'.*repmat(rX,1,M),[R N M]),2),[1 3 2]);
+        fX=-sum(reshape(fact(:,ones(R,1))'.*rP(:,ind),[R N M]),3);
 
       end
 
-      B=B+gamma*B0; % there must be a mistake with a sign
-      P=P+eta*P0; % there must be a mistake with a sign
+      P0=B*fP;
+      B0=X*fX'+P*fP';
+
+      B=B-gamma*B0;
+      P=P-eta*P0;
 
       if orthonormal,
         B=orthonorm(B);
