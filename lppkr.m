@@ -1,15 +1,15 @@
 function [bestB, bestP] = lppkr(X, XX, B0, P0, PP, varargin)
 %
-% LPPKR: Learning Discriminative Projections and Prototypes
+% LPPKR: Learning Projections and Prototypes for k-NN Regression
 %
 % [B, P] = lppkr(X, XX, B0, P0, PP, ...)
 %
 %   Input:
-%     X       - Independent Data matrix. Each column vector is a data point.
-%     XX      - Dependent Data matrix.
+%     X       - Independent data matrix. Each column vector is a data point.
+%     XX      - Dependent data matrix.
 %     B0      - Initial projection base.
 %     P0      - Initial prototypes.
-%     PP      - Dependent Data for the prototypes.
+%     PP      - Dependent data for the prototypes.
 %
 %   Input (optional):
 %     'beta',BETA                - Sigmoid slope (defaul=1)
@@ -20,13 +20,12 @@ function [bestB, bestP] = lppkr(X, XX, B0, P0, PP, varargin)
 %     'maxI',MAXI                - Maximum number of iterations (default=1000)
 %     'stats',STAT               - Statistics every STAT iterations (default=1000)
 %     'seed',SEED                - Random seed (default=system)
-%     'stochastic',(true|false)  - Stochastic gradient ascend (default=true)
+%     'stochastic',(true|false)  - Stochastic gradient descend (default=true)
 %     'orthoit',OIT              - Orthogonalize every OIT iterations (default=1)
 %     'orthonormal',(true|false) - Orthonormal projection base (default=true)
 %     'orthogonal',(true|false)  - Orthogonal projection base (default=false)
 %     'normalize',(true|false)   - Normalize training data (default=true)
 %     'whiten',(true|false)      - Whiten the training data (default=false)
-%     'protoweight',(true|false) - Weigth prototype update (default=false)
 %     'logfile',FID              - Output log file (default=stderr)
 %     'distance',('euclidean'|   - NN distance (default='euclidean')
 %                 'cosine')
@@ -36,7 +35,7 @@ function [bestB, bestP] = lppkr(X, XX, B0, P0, PP, varargin)
 %     P   - Final learned prototypes
 %
 %
-% Version: 1.00 -- Sep/2009
+% Version: 1.01 -- Sep/2009
 %
 
 %
@@ -213,9 +212,10 @@ else
     gamma=2*gamma;
     eta=2*eta;
   end
-  NN=N*DD;
-  gamma=2*gamma*beta/NN;
-  eta=2*eta*beta/NN;
+  beta=beta/DD;
+  gamma=2*gamma*beta/N;
+  eta=2*eta*beta/N;
+  NDD=N*DD;
 
   dist=zeros(M,N);
   S=zeros(N,1);
@@ -234,8 +234,9 @@ else
 
   ppmu=mean(PP,2);
   ppsd=std(PP,1,2);
-  XX=(XX-ppmu(:,ones(N,1)))./ppsd(:,ones(N,1));
   PP=(PP-ppmu(:,ones(M,1)))./ppsd(:,ones(M,1));
+  XX=(XX-ppmu(:,ones(N,1)))./ppsd(:,ones(N,1));
+  ppsd=ppsd.*ppsd;
 
   ind=1:M;
   ind=ind(ones(N,1),:);
@@ -296,9 +297,9 @@ else
 
       dXX=mXX-XX;
       tanhXX=tanh(beta*sum(dXX.*dXX,1))';
-      J=sum(tanhXX)/NN;
-      E=sum(sum(dXX.*dXX,2).*ppsd.*ppsd)/NN;
-      %E=sum(sum(dXX.*dXX))/NN;
+      J=sum(tanhXX)/N;
+      E=sum(sum(dXX.*dXX,2).*ppsd)/NDD;
+      %E=sum(sum(dXX.*dXX))/NDD;
 
       mark='';
       if J<=bestJ,
@@ -327,37 +328,26 @@ else
       J0=J;
       I=I+1;
 
-      fX=zeros(R,N);
-      fP=zeros(R,M);
-
       if euclidean,
 
-        tic
-        for n=1:N,
-          sumpp=sum(dist(n*ones(DD,1),:).*PP,2);
-          sump=dist(n,:).*sum(dXX(:,n*ones(M,1)).*(sumpp(:,ones(M,1))-S(n)*PP),1);
-          sump=sump.*((tanhXX(n)*tanhXX(n)-1)/(S(n)*S(n)));
-          frP=sump(ones(R,1),:).*(rX(:,n*ones(M,1))-rP);
-          fP=fP-frP;
-          fX(:,n)=fX(:,n)+sum(frP,2);
-        end
-        toc
+        %tic
+        %fX=zeros(R,N);
+        %fP=zeros(R,M);
+        %for n=1:N,
+        %  sump=dist(n,:).*sum(dXX(:,n*ones(M,1)).*(mXX(:,n*ones(M,1))-PP),1);
+        %  sump=sump.*((tanhXX(n)*tanhXX(n)-1)/S(n));
+        %  frP=sump(ones(R,1),:).*(rX(:,n*ones(M,1))-rP);
+        %  fP=fP-frP;
+        %  fX(:,n)=fX(:,n)+sum(frP,2);
+        %end
+        %toc
 
-        fX2=zeros(R,N);
-        fP2=zeros(R,M);
-        tic
-        for n=1:N,
-          sump=dist(n,:).*sum(dXX(:,n*ones(M,1)).*(mXX(:,n*ones(M,1))-PP),1);
-          sump=sump.*((tanhXX(n)*tanhXX(n)-1)/S(n));
-          frP=sump(ones(R,1),:).*(rX(:,n*ones(M,1))-rP);
-          fP2=fP2-frP;
-          fX2(:,n)=fX2(:,n)+sum(frP,2);
-        end
-        toc
-
-        keyboard
-        tanhXX=(tanhXX.*tanhXX-1)./S;
-
+        %tic
+        fact=repmat((tanhXX.*tanhXX-1)./S,M,1).*dist(:).*sum(repmat(dXX,1,M).*(repmat(mXX,1,M)-PP(:,ind)),1)';
+        fact=reshape(fact(:,ones(R,1))'.*(repmat(rX,1,M)-rP(:,ind)),[R N M]);
+        fP=-permute(sum(fact,2),[1 3 2]);
+        fX=sum(fact,3);
+        %toc
 
         P0=B*fP;
         B0=X*fX'+P*fP';
@@ -366,32 +356,6 @@ else
 
       B=B+gamma*B0; % there must be a mistake with a sign
       P=P+eta*P0; % there must be a mistake with a sign
-
-      %if euclidean,
-
-        %rXs=(rX-rP(:,is)).*ds(:,ones(R,1))';
-        %rXd=(rX-rP(:,id)).*dd(:,ones(R,1))';
-        %for m=1:M,
-        %  rP0(:,m)=sum(rXd(:,id==m),2)-sum(rXs(:,is==m),2);
-        %end
-        %P0=B*rP0;
-        %Xs=X-P(:,is);
-        %Xd=X-P(:,id);
-        %B0=Xs*rXs'-Xd*rXd';
-
-      %  rXs=(rX-rP(:,is)).*ds(:,ones(R,1))';
-      %  rXd=(rX-rP(:,id)).*dd(:,ones(R,1))';
-      %  fX=rXs-rXd;
-      %  for m=1:M,
-      %    fP(:,m)=sum(rXd(:,id==m),2)-sum(rXs(:,is==m),2);
-      %  end
-      %  P0=B*fP;
-      %  B0=X*fX'+P*fP';
-      
-      %end
-
-      %B=B-gamma*B0;
-      %P=P-eta*P0;
 
       if orthonormal,
         B=orthonorm(B);
