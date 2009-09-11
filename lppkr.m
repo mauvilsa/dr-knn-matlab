@@ -246,7 +246,7 @@ else
   ind2=ind2(ones(N,1),:);
   ind2=ind2(:);
 
-  fprintf(logfile,'lppkr: output: iteration | J | delta(J) | error\n');
+  fprintf(logfile,'lppkr: output: iteration | J | delta(J) | rmse\n');
 
   tic;
 
