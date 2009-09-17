@@ -1,20 +1,22 @@
-function [bestB, bestP] = lppkr(X, XX, B0, P0, PP, varargin)
+function [bestB, bestP, bestPP] = lppkr(X, XX, B0, P0, PP0, varargin)
 %
 % LPPKR: Learning Projections and Prototypes for k-NN Regression
 %
-% [B, P] = lppkr(X, XX, B0, P0, PP, ...)
+% [B, P, PP] = lppkr(X, XX, B0, P0, PP0, ...)
 %
 %   Input:
-%     X       - Independent data matrix. Each column vector is a data point.
-%     XX      - Dependent data matrix.
+%     X       - Independent trainig data. Each column vector is a data point.
+%     XX      - Dependent training data.
 %     B0      - Initial projection base.
-%     P0      - Initial prototypes.
-%     PP      - Dependent data for the prototypes.
+%     P0      - Initial independent prototype data.
+%     PP0     - Initial dependent prototype data.
 %
 %   Input (optional):
 %     'beta',BETA                - Sigmoid slope (defaul=1)
-%     'gamma',GAMMA              - Projection base learning rate (default=0.5)
-%     'eta',ETA                  - Prototypes learning rate (default=0.5)
+%     'rateB',RATEB              - Projection base learning rate (default=0.5)
+%     'rateP',RATEP              - Ind. Prototypes learning rate (default=0.5)
+%     'ratePP',RATEPP            - Dep. Prototypes learning rate (default=0)
+%     'rates',RATES              - Set all learning rates to RATES
 %     'epsilon',EPSILON          - Convergence criterium (default=1e-7)
 %     'minI',MINI                - Minimum number of iterations (default=100)
 %     'maxI',MAXI                - Maximum number of iterations (default=1000)
@@ -32,10 +34,11 @@ function [bestB, bestP] = lppkr(X, XX, B0, P0, PP, varargin)
 %
 %   Output:
 %     B   - Final learned projection base
-%     P   - Final learned prototypes
+%     P   - Final learned independent prototype data
+%     PP  - Final learned dependent prototype data
 %
 %
-% Version: 1.02 -- Sep/2009
+% Version: 1.03 -- Sep/2009
 %
 
 %
@@ -56,8 +59,9 @@ function [bestB, bestP] = lppkr(X, XX, B0, P0, PP, varargin)
 %
 
 beta=1;
-gamma=0.5;
-eta=0.5;
+rateB=0.5;
+rateP=0.5;
+ratePP=0;
 
 epsilon=1e-7;
 minI=100;
@@ -83,8 +87,10 @@ while size(varargin,2)>0,
   if ~ischar(varargin{n}) || size(varargin,2)<n+1,
     argerr=true;
   elseif strcmp(varargin{n},'beta') || ...
-         strcmp(varargin{n},'gamma') || ...
-         strcmp(varargin{n},'eta')  || ...
+         strcmp(varargin{n},'rateB') || ...
+         strcmp(varargin{n},'rateP')  || ...
+         strcmp(varargin{n},'ratePP')  || ...
+         strcmp(varargin{n},'rates')  || ...
          strcmp(varargin{n},'epsilon') || ...
          strcmp(varargin{n},'minI') || ...
          strcmp(varargin{n},'maxI') || ...
@@ -157,9 +163,9 @@ elseif size(B0,1)~=D,
   fprintf(logfile,'lppkr: error: dimensionality of base and data must be the same\n');
 elseif size(P0,1)~=D,
   fprintf(logfile,'lppkr: error: dimensionality of prototypes and data must be the same\n');
-elseif size(XX,2)~=N || size(PP,2)~=M,
+elseif size(XX,2)~=N || size(PP0,2)~=M,
   fprintf(logfile,'lppkr: error: the number of vectors in the dependent and independent data must be the same\n');
-elseif size(PP,1)~=DD,
+elseif size(PP0,1)~=DD,
   fprintf(logfile,'lppkr: error: the dimensionality of the dependent variables for the data and the prototypes must be the same\n');
 elseif ~(strcmp(distance,'euclidean') || strcmp(distance,'cosine')),
   fprintf(logfile,'lppkr: error: invalid distance\n');
@@ -193,6 +199,12 @@ else
     B0=IW*B0;
   end
 
+  ppmu=mean(PP0,2);
+  ppsd=std(PP0,1,2);
+  PP0=(PP0-ppmu(:,ones(M,1)))./ppsd(:,ones(M,1));
+  XX=(XX-ppmu(:,ones(N,1)))./ppsd(:,ones(N,1));
+  ppsd=ppsd.*ppsd;
+
   if orthonormal,
     B0=orthonorm(B0);
   elseif orthogonal,
@@ -208,23 +220,28 @@ else
     euclidean=false;
   end
 
+  if exist('rates','var'),
+    rateB=rates;
+    rateP=rates;
+    ratePP=rates;
+  end
   if euclidean,
-    gamma=2*gamma;
-    eta=2*eta;
+    rateB=2*rateB;
+    rateP=2*rateP;
+    ratePP=2*ratePP;
   end
   beta=beta/DD;
-  gamma=2*gamma*beta/N;
-  eta=2*eta*beta/N;
+  rateB=2*rateB*beta/N;
+  rateP=2*rateP*beta/N;
+  ratePP=2*ratePP*beta/N;
   NDD=N*DD;
-
-  dist=zeros(M,N);
-  S=zeros(N,1);
-  mXX=zeros(size(XX));
 
   B=B0;
   P=P0;
+  PP=PP0;
   bestB=B0;
   bestP=P0;
+  bestPP=PP0;
   bestI=0;
   bestJ=1;
   bestE=Inf;
@@ -232,12 +249,6 @@ else
 
   J0=1;
   I=0;
-
-  ppmu=mean(PP,2);
-  ppsd=std(PP,1,2);
-  PP=(PP-ppmu(:,ones(M,1)))./ppsd(:,ones(M,1));
-  XX=(XX-ppmu(:,ones(N,1)))./ppsd(:,ones(N,1));
-  ppsd=ppsd.*ppsd;
 
   ind=1:M;
   ind=ind(ones(N,1),:);
@@ -248,6 +259,7 @@ else
   ind2=ind2(:);
 
   mindist=100*sqrt(1/realmax); %%% g(d)=1/d
+  %mindist=R/100; %%% g(d)=1/(d+R/100)
 
   fprintf(logfile,'lppkr: Dx=%d Dxx=%d R=%d Nx=%d\n',D,DD,R,N);
   fprintf(logfile,'lppkr: output: iteration | J | delta(J) | rmse\n');
@@ -265,6 +277,7 @@ else
 
         %dist=reshape(exp(-sum(power(repmat(rX,1,M)-rP(:,ind),2),1)),N,M); %%% g(d)=exp(-d)
         dist=sum(power(repmat(rX,1,M)-rP(:,ind),2),1); dist(dist<mindist)=mindist; dist=reshape(1./dist,N,M); %%% g(d)=1/d
+        %dist=reshape(1./(sum(power(repmat(rX,1,M)-rP(:,ind),2),1)+mindist),N,M); %%% g(d)=1/(d+R/100)
 
       else % cosine
 
@@ -274,12 +287,13 @@ else
         rX=rX./rxsd(ones(R,1),:);
         %dist=reshape(exp(-(1-sum(repmat(rX,1,M).*rP(:,ind),1))),N,M); %%% g(d)=exp(-d)
         dist=1-sum(repmat(rX,1,M).*rP(:,ind),1); dist(dist<mindist)=mindist; dist=reshape(1./dist,N,M); %%% g(d)=1/d
+        %dist=reshape(1./(1-sum(repmat(rX,1,M).*rP(:,ind),1)+mindist),N,M); %%% g(d)=1/(d+R/100)
 
       end
 
       S=sum(dist,2);
       mXX=(reshape(sum(repmat(dist,DD,1).*PP(ind2,:),2),N,DD)./S(:,ones(DD,1)))';
-      dist=dist.*dist; %%% g(d)=1/d
+      dist=dist.*dist; %%% g(d)=1/d, g(d)=1/(d+R/100)
 
       dXX=mXX-XX;
       tanhXX=tanh(beta*sum(dXX.*dXX,1))';
@@ -290,6 +304,7 @@ else
       if J<=bestJ,
         bestB=B;
         bestP=P;
+        bestPP=PP;
         bestI=I;
         bestJ=J;
         bestE=E;
@@ -314,16 +329,20 @@ else
       J0=J;
       I=I+1;
 
+      fact=repmat((1-tanhXX.*tanhXX)./S,M,1).*dist(:);
+      fPP=sum(reshape(fact.*sum(repmat(dXX,1,M),1)',N,M),1);
+      fact=fact.*sum(repmat(dXX,1,M).*(repmat(mXX,1,M)-PP(:,ind)),1)';
+
       if euclidean,
 
-        fact=repmat((1-tanhXX.*tanhXX)./S,M,1).*dist(:).*sum(repmat(dXX,1,M).*(repmat(mXX,1,M)-PP(:,ind)),1)';
+        %fact=repmat((1-tanhXX.*tanhXX)./S,M,1).*dist(:).*sum(repmat(dXX,1,M).*(repmat(mXX,1,M)-PP(:,ind)),1)';
         fact=reshape(fact(:,ones(R,1))'.*(repmat(rX,1,M)-rP(:,ind)),[R N M]);
         fP=-permute(sum(fact,2),[1 3 2]);
         fX=sum(fact,3);
 
       else % cosine
 
-        fact=repmat((1-tanhXX.*tanhXX)./S,M,1).*dist(:).*sum(repmat(dXX,1,M).*(repmat(mXX,1,M)-PP(:,ind)),1)';
+        %fact=repmat((1-tanhXX.*tanhXX)./S,M,1).*dist(:).*sum(repmat(dXX,1,M).*(repmat(mXX,1,M)-PP(:,ind)),1)';
         fP=-permute(sum(reshape(fact(:,ones(R,1))'.*repmat(rX,1,M),[R N M]),2),[1 3 2]);
         fX=-sum(reshape(fact(:,ones(R,1))'.*rP(:,ind),[R N M]),3);
 
@@ -332,8 +351,9 @@ else
       P0=B*fP;
       B0=X*fX'+P*fP';
 
-      B=B-gamma*B0;
-      P=P-eta*P0;
+      B=B-rateB*B0;
+      P=P-rateP*P0;
+      PP=PP-ratePP*fPP(ones(DD,1),:);
 
       if orthonormal,
         B=orthonorm(B);
@@ -346,6 +366,8 @@ else
   end
 
   tm=toc;
+
+  bestPP=bestPP.*sqrt(ppsd(:,ones(M,1)))+ppmu(:,ones(M,1));
 
   if normalize || linearnorm,
     bestP=bestP.*xsd(xsd~=0,ones(M,1))+xmu(xsd~=0,ones(M,1));
