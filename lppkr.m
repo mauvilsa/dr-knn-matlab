@@ -1,4 +1,4 @@
-function [bestB, bestP, bestPP] = lppkr_tmp(X, XX, B0, P0, PP0, varargin)
+function [bestB, bestP, bestPP] = lppkr(X, XX, B0, P0, PP0, varargin)
 %
 % LPPKR: Learning Projections and Prototypes for k-NN Regression
 %
@@ -176,6 +176,11 @@ elseif ~(strcmp(distance,'euclidean') || strcmp(distance,'cosine')),
   fprintf(logfile,'lppkr: error: invalid distance\n');
 else
 
+  if probemode,
+    normalize=false;
+    verbose=false;
+  end
+
   if normalize || linearnorm,
     xmu=mean(X,2);
     xsd=std(X,1,2)*sqrt(D);
@@ -255,9 +260,11 @@ else
         nPP=1;
         while nPP<=size(ratesPP,2),
           rPP=ratesPP(nPP);
-          [I, J] = lppkr_tmp(X,XX,B0,P0,PP0, ...
-                             'probemode',true, 'verbose',false, 'normalize',false, ...
-                             'rateB',rB,'rateP',rP,'ratePP',rPP, 'maxI',probeI );
+          if rB==0 && rP==0 && rPP==0,
+            continue;
+          end
+          [I, J] = lppkr(X,XX,B0,P0,PP0, 'probemode',true, ...
+                         'rateB',rB,'rateP',rP,'ratePP',rPP, 'maxI',probeI );
           if I>bestI || (I==bestI && J<bestJ),
             if verbose,
               fprintf(logfile,'lppkr_probeRates: rates={%.2E %.2E %.2E} => impI=%.2f J=%.4f ++\n',rB,rP,rPP,I/probeI,J);
