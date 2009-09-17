@@ -1,4 +1,4 @@
-function [bestB, bestP, bestPP] = lppkr(X, XX, B0, P0, PP0, varargin)
+function [bestB, bestP, bestPP] = lppkr_tmp(X, XX, B0, P0, PP0, varargin)
 %
 % LPPKR: Learning Projections and Prototypes for k-NN Regression
 %
@@ -17,19 +17,23 @@ function [bestB, bestP, bestPP] = lppkr(X, XX, B0, P0, PP0, varargin)
 %     'rateP',RATEP              - Ind. Prototypes learning rate (default=0.5)
 %     'ratePP',RATEPP            - Dep. Prototypes learning rate (default=0)
 %     'rates',RATES              - Set all learning rates to RATES
+%     'probe',PROBE              - Probe learning rates (default=false)
+%     'probeI',PROBEI            - Iterations for probing learning rates (default=100)
 %     'epsilon',EPSILON          - Convergence criterium (default=1e-7)
 %     'minI',MINI                - Minimum number of iterations (default=100)
 %     'maxI',MAXI                - Maximum number of iterations (default=1000)
-%     'stats',STAT               - Statistics every STAT iterations (default=1000)
 %     'seed',SEED                - Random seed (default=system)
 %     'stochastic',(true|false)  - Stochastic gradient descend (default=true)
-%     'orthoit',OIT              - Orthogonalize every OIT iterations (default=1)
+%     'stats',STAT               - Statistics every STAT iterations (default={b:1,s:1000})
+%     'orthoit',OIT              - Orthogonalize every OIT iterations (default={b:1,s:1000})
 %     'orthonormal',(true|false) - Orthonormal projection base (default=true)
 %     'orthogonal',(true|false)  - Orthogonal projection base (default=false)
-%     'normalize',(true|false)   - Normalize training data (default=true)
+%     'normalize',(true|false)   - Normalize training data (default=false)
+%     'linearnorm',(true|false)  - Linear normalize training data (default=true)
 %     'whiten',(true|false)      - Whiten the training data (default=false)
 %     'logfile',FID              - Output log file (default=stderr)
-%     'distance',('euclidean'|   - NN distance (default='euclidean')
+%     'verbose',(true|false)     - Verbose (default=true)
+%     'distance',('euclidean'|   - Used distance (default='euclidean')
 %                 'cosine')
 %
 %   Output:
@@ -38,7 +42,7 @@ function [bestB, bestP, bestPP] = lppkr(X, XX, B0, P0, PP0, varargin)
 %     PP  - Final learned dependent prototype data
 %
 %
-% Version: 1.03 -- Sep/2009
+% Version: 1.04 -- Sep/2009
 %
 
 %
@@ -62,24 +66,25 @@ beta=1;
 rateB=0.5;
 rateP=0.5;
 ratePP=0;
+probeI=100;
+probemode=false;
 
 epsilon=1e-7;
 minI=100;
 maxI=1000;
 
 stochastic=false;
-seed=rand('seed');
-stats=1000;
-orthoit=100;
 
 orthonormal=true;
 orthogonal=false;
 normalize=true;
 whiten=false;
 linearnorm=false;
+
 distance='euclidean';
 
 logfile=2;
+verbose=true;
 
 n=1;
 argerr=false;
@@ -94,6 +99,8 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'epsilon') || ...
          strcmp(varargin{n},'minI') || ...
          strcmp(varargin{n},'maxI') || ...
+         strcmp(varargin{n},'probeI') || ...
+         strcmp(varargin{n},'probe') || ...
          strcmp(varargin{n},'logfile') || ...
          strcmp(varargin{n},'stats') || ...
          strcmp(varargin{n},'orthoit') || ...
@@ -111,6 +118,8 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'orthogonal') || ...
          strcmp(varargin{n},'balance') || ...
          strcmp(varargin{n},'protoweight') || ...
+         strcmp(varargin{n},'verbose') || ...
+         strcmp(varargin{n},'probemode') || ...
          strcmp(varargin{n},'stochastic'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~islogical(varargin{n+1}),
@@ -118,14 +127,11 @@ while size(varargin,2)>0,
     else
       if varargin{n+1}==true,
         if strcmp(varargin{n},'normalize'),
-          whiten=false;
-          linearnorm=false;
+          whiten=false;    linearnorm=false;
         elseif strcmp(varargin{n},'whiten'),
-          normalize=false;
-          linearnorm=false;
+          normalize=false; linearnorm=false;
         elseif strcmp(varargin{n},'linearnorm'),
-          normalize=false;
-          whiten=false;
+          normalize=false; whiten=false;
         elseif strcmp(varargin{n},'orthonormal'),
           orthogonal=false;
         elseif strcmp(varargin{n},'orthogonal'),
@@ -149,8 +155,7 @@ while size(varargin,2)>0,
   end
 end
 
-N=size(X,2);
-D=size(X,1);
+[D,N]=size(X);
 DD=size(XX,1);
 R=size(B0,2);
 M=size(P0,2);
@@ -212,7 +217,81 @@ else
   end
 
   if stochastic,
-    rand('seed',seed);
+    if exist('seed','var'),
+      rand('state',seed);
+    end
+    if ~exist('stats','var'),
+      stats=1000;
+    end
+    if ~exist('orthoit','var'),
+      orthoit=1000;
+    end
+  else
+    if ~exist('stats','var'),
+      stats=1;
+    end
+    if ~exist('orthoit','var'),
+      orthoit=1;
+    end
+  end
+
+  if exist('probe','var'),
+    unstable=0.2*probeI;
+    bestI=0;
+    bestJ=1.0;
+    rateB=0;
+    rateP=0;
+    ratePP=0;
+    ratesB=unique(probe(1,probe(1,:)>=0));
+    ratesP=unique(probe(2,probe(2,:)>=0));
+    ratesPP=unique(probe(3,probe(3,:)>=0));
+    nB=1;
+    tic;
+    while nB<=size(ratesB,2),
+      rB=ratesB(nB);
+      nP=1;
+      while nP<=size(ratesP,2),
+        rP=ratesP(nP);
+        nPP=1;
+        while nPP<=size(ratesPP,2),
+          rPP=ratesPP(nPP);
+          [I, J] = lppkr_tmp(X,XX,B0,P0,PP0, ...
+                             'probemode',true, 'verbose',false, 'normalize',false, ...
+                             'rateB',rB,'rateP',rP,'ratePP',rPP, 'maxI',probeI );
+          if I>bestI || (I==bestI && J<bestJ),
+            if verbose,
+              fprintf(logfile,'lppkr_probeRates: rates={%.2E %.2E %.2E} => impI=%.2f J=%.4f ++\n',rB,rP,rPP,I/probeI,J);
+            end
+            bestI=I;
+            bestJ=J;
+            rateB=rB;
+            rateP=rP;
+            ratePP=rPP;
+          else          
+            if verbose,
+              fprintf(logfile,'lppkr_probeRates: rates={%.2E %.2E %.2E} => impI=%.2f J=%.4f\n',rB,rP,rPP,I/probeI,J);
+            end
+            if I<unstable,
+              if nPP==1,
+                if nP==1,
+                  nB=size(ratesB,2)+1;
+                end
+                nP=size(ratesP,2)+1;
+              end
+              break;
+            end
+          end
+          nPP=nPP+1;
+        end
+        nP=nP+1;
+      end
+      nB=nB+1;
+    end
+    tm=toc;
+    if verbose,
+      fprintf(logfile,'lppkr_probeRates: total time (s): %f\n',tm);
+      fprintf(logfile,'lppkr_probeRates: selected rates={%.2E %.2E %.2E}\n',rateB,rateP,ratePP);
+    end
   end
 
   euclidean=true;
@@ -245,7 +324,7 @@ else
   bestI=0;
   bestJ=1;
   bestE=Inf;
-  best=0;
+  nimp=-1;
 
   J0=1;
   I=0;
@@ -261,8 +340,10 @@ else
   mindist=100*sqrt(1/realmax); %%% g(d)=1/d
   %mindist=R/100; %%% g(d)=1/(d+R/100)
 
-  fprintf(logfile,'lppkr: Dx=%d Dxx=%d R=%d Nx=%d\n',D,DD,R,N);
-  fprintf(logfile,'lppkr: output: iteration | J | delta(J) | rmse\n');
+  if verbose,
+    fprintf(logfile,'lppkr: Dx=%d Dxx=%d R=%d Nx=%d\n',D,DD,R,N);
+    fprintf(logfile,'lppkr: output: iteration | J | delta(J) | rmse\n');
+  end
 
   tic;
 
@@ -309,19 +390,25 @@ else
         bestJ=J;
         bestE=E;
         mark=' *';
-        best=best+1;
+        nimp=nimp+1;
       end
 
-      fprintf(logfile,'%d\t%.9f\t%.9f\t%f%s\n',I,J,J-J0,E,mark);
+      if verbose && mod(I,stats)==0,
+        fprintf(logfile,'%d\t%.9f\t%.9f\t%f%s\n',I,J,J-J0,E,mark);
+      end
 
       if I>=maxI,
-        fprintf(logfile,'lppkr: reached maximum number of iterations\n');
+        if verbose,
+          fprintf(logfile,'lppkr: reached maximum number of iterations\n');
+        end
         break;
       end
 
       if I>=minI,
         if abs(J0-J)<epsilon,
-          fprintf(logfile,'lppkr: index has stabilized\n');
+          if verbose,
+            fprintf(logfile,'lppkr: index has stabilized\n');
+          end
           break;
         end
       end
@@ -355,10 +442,12 @@ else
       P=P-rateP*P0;
       PP=PP-ratePP*fPP(ones(DD,1),:);
 
-      if orthonormal,
-        B=orthonorm(B);
-      elseif orthogonal,
-        B=orthounit(B);
+      if mod(I,orthoit)==0,
+        if orthonormal,
+          B=orthonorm(B);
+        elseif orthogonal,
+          B=orthounit(B);
+        end
       end
 
     end
@@ -385,9 +474,17 @@ else
     bestB=W*bestB;
   end
 
-  fprintf(logfile,'lppkr: average iteration time (ms): %f\n',1000*tm/I);
-  fprintf(logfile,'lppkr: total time (s): %f\n',tm);
-  fprintf(logfile,'lppkr: amount of improvement iterations: %f\n',best/I);
-  fprintf(logfile,'lppkr: best iteration: I=%d, J=%f, RMSE=%f\n',bestI,bestJ,bestE);
+  if verbose,
+    fprintf(logfile,'lppkr: average iteration time (ms): %f\n',1000*tm/I);
+    fprintf(logfile,'lppkr: total time (s): %f\n',tm);
+    fprintf(logfile,'lppkr: amount of improvement iterations: %f\n',nimp/I);
+    fprintf(logfile,'lppkr: best iteration: I=%d, J=%f, RMSE=%f\n',bestI,bestJ,bestE);
+  end
+
+  if probemode,
+    bestB=nimp;
+    bestP=bestJ;
+    bestPP=bestE;
+  end
 
 end
