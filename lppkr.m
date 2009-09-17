@@ -228,6 +228,7 @@ else
   bestI=0;
   bestJ=1;
   bestE=Inf;
+  best=0;
 
   J0=1;
   I=0;
@@ -246,6 +247,9 @@ else
   ind2=ind2(ones(N,1),:);
   ind2=ind2(:);
 
+  mindist=100*sqrt(1/realmax); %%% g(d)=1/d
+
+  fprintf(logfile,'lppkr: Dx=%d Dxx=%d R=%d Nx=%d\n',D,DD,R,N);
   fprintf(logfile,'lppkr: output: iteration | J | delta(J) | rmse\n');
 
   tic;
@@ -260,7 +264,7 @@ else
       if euclidean,
 
         %dist=reshape(exp(-sum(power(repmat(rX,1,M)-rP(:,ind),2),1)),N,M); %%% g(d)=exp(-d)
-        dist=sum(power(repmat(rX,1,M)-rP(:,ind),2),1); dist(dist==0)=realmin; dist=reshape(1./dist,N,M); %%% g(d)=1/d
+        dist=sum(power(repmat(rX,1,M)-rP(:,ind),2),1); dist(dist<mindist)=mindist; dist=reshape(1./dist,N,M); %%% g(d)=1/d
 
       else % cosine
 
@@ -269,7 +273,7 @@ else
         rxsd=sqrt(sum(rX.*rX,1));
         rX=rX./rxsd(ones(R,1),:);
         %dist=reshape(exp(-(1-sum(repmat(rX,1,M).*rP(:,ind),1))),N,M); %%% g(d)=exp(-d)
-        dist=1-sum(repmat(rX,1,M).*rP(:,ind),1); dist(dist==0)=realmin; dist=reshape(1./dist,N,M); %%% g(d)=1/d
+        dist=1-sum(repmat(rX,1,M).*rP(:,ind),1); dist(dist<mindist)=mindist; dist=reshape(1./dist,N,M); %%% g(d)=1/d
 
       end
 
@@ -290,6 +294,7 @@ else
         bestJ=J;
         bestE=E;
         mark=' *';
+        best=best+1;
       end
 
       fprintf(logfile,'%d\t%.9f\t%.9f\t%f%s\n',I,J,J-J0,E,mark);
@@ -358,7 +363,9 @@ else
     bestB=W*bestB;
   end
 
-  fprintf(logfile,'lppkr: average iteration time %f\n',tm/I);
-  fprintf(logfile,'lppkr: best iteration %d, J=%f, E=%f\n',bestI,bestJ,bestE);
+  fprintf(logfile,'lppkr: average iteration time (ms): %f\n',1000*tm/I);
+  fprintf(logfile,'lppkr: total time (s): %f\n',tm);
+  fprintf(logfile,'lppkr: amount of improvement iterations: %f\n',best/I);
+  fprintf(logfile,'lppkr: best iteration: I=%d, J=%f, RMSE=%f\n',bestI,bestJ,bestE);
 
 end

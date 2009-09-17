@@ -11,13 +11,15 @@ function [P0, PP] = lppkr_initP(X, XX, M, varargin)
 %
 %   Input (optional):
 %     'extra',EXTRA              - Extrapolate EXTRA from extreme values (defaul=false)
+%     'multi',MULT               - Multimodal prototypes, MULT-means (defaul=false)
+%     'seed',SEED                - Random seed (default=system)
 %
 %   Output:
 %     P0      - Initialized prototypes. Independent data.
 %     P0      - Initialized prototypes. Dependent data.
 %
 %
-% Version: 1.00 -- Sep/2009
+% Version: 1.01 -- Sep/2009
 %
 
 %
@@ -37,12 +39,16 @@ function [P0, PP] = lppkr_initP(X, XX, M, varargin)
 % along with this program. If not, see <http://www.gnu.org/licenses/>.
 %
 
+seed=rand('state');
+
 n=1;
 argerr=false;
 while size(varargin,2)>0,
   if ~ischar(varargin{n}) || size(varargin,2)<n+1,
     argerr=true;
-  elseif strcmp(varargin{n},'extra'),
+  elseif strcmp(varargin{n},'extra') || ...
+         strcmp(varargin{n},'seed') || ...
+         strcmp(varargin{n},'multi'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~isnumeric(varargin{n+1}) || sum(varargin{n+1}<0),
       argerr=true;
@@ -61,6 +67,8 @@ if argerr,
   fprintf(2,'lppkr_initP: error: incorrect input argument (%d-%d)\n',varargin{n},varargin{n+1});
 elseif nargin-size(varargin,2)~=3,
   fprintf(2,'lppkr_initP: error: not enough input arguments\n');
+elseif exist('multi','var') && mod(M,multi)~=0,
+  fprintf(2,'lppkr_initP: error: the number of prototypes should be a multiple of MULT\n');
 else
 
   DD=size(XX,1);
@@ -75,7 +83,15 @@ else
     mn=omn-extra.*(omx-omn);
   end
 
+  if ~exist('multi','var'),
+    multi=1;
+  else
+    M=M/multi;
+  end
+
   d=(mx-mn)/(M-1);
+
+  rand('state',seed);
 
   if DD==1,
 
@@ -84,17 +100,18 @@ else
 
     for m=mn:d:mx,
       s=XX>=m-d/2 & XX<m+d/2;
-      if sum(s)>0,
-        P0=[P0,mean(X(:,s),2)];
+      if sum(s)>multi,
+        P0=[P0,kmeans(X(:,s),multi,'seed',seed)];
+        seed=rand('state');
       else
-        [mdist,idx]=min(abs(XX-m));
-        P0=[P0,X(:,idx)];
+        [mdist,idx]=sort(abs(XX-m));
+        P0=[P0,X(:,idx(1:multi))];
       end
-      PP=[PP,m];
+      PP=[PP,m*ones(1,multi)];
     end
 
   else
-    fprintf(2,'lppkr_initP: error: for dimensionality of dependent data higher than one, not implemented yet\n');
+    fprintf(2,'lppkr_initP: error: dimensionality of dependent data higher than one, not implemented yet\n');
 %    dd=1,
 %    for m=mn(dd):(mx(dd)-mn(dd))/(M-1):mx(dd),
   end

@@ -18,7 +18,7 @@ function [mu, ind] = kmeans(X, K, varargin)
 %     ind     - Indexes of the learned means
 %
 %
-% Version: 1.01 -- Jan/2009
+% Version: 1.02 -- Sep/2009
 %
 
 %
@@ -38,21 +38,30 @@ function [mu, ind] = kmeans(X, K, varargin)
 % along with this program. If not, see <http://www.gnu.org/licenses/>.
 %
 
+[D,N]=size(X);
+
 if K==1,
   mu=mean(X,2);
+  return;
+elseif K==N,
+  mu=X;
   return;
 end
 
 maxI=100;
-logfile=0;
+logfile=2;
+verbose=0;
 
 n=1;
 argerr=false;
 while size(varargin,2)>0,
   if ~ischar(varargin{n}) || size(varargin,2)<n+1,
     argerr=true;
-  elseif strcmp(varargin{n},'mu0') || strcmp(varargin{n},'logfile') || ...
-         strcmp(varargin{n},'maxI') || strcmp(varargin{n},'seed'),
+  elseif strcmp(varargin{n},'mu0') || ...
+         strcmp(varargin{n},'logfile') || ...
+         strcmp(varargin{n},'verbose') || ...
+         strcmp(varargin{n},'maxI') || ...
+         strcmp(varargin{n},'seed'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~isnumeric(varargin{n+1}),
       argerr=true;
@@ -67,32 +76,32 @@ while size(varargin,2)>0,
   end
 end
 
-N=size(X,2);
-D=size(X,1);
-
 if exist('mu0','var'),
-  mu=mu0;
+  [D0, K0]=size(mu0);
 else
-  mu=zeros(D,K);
+  D0=D;
+  K0=K;
 end
 
 if argerr,
-  fprintf(logfile,'kmeans: error: incorrect input argument (%d-%d)\n',varargin{n},varargin{n+1});
+  fprintf(logfile,'kmeans: error: incorrect input argument (%d %d)\n',varargin{n},varargin{n+1});
 elseif nargin-size(varargin,2)~=2,
   fprintf(logfile,'kmeans: error: not enough input arguments\n');
-elseif K>=N || K<2,
+elseif K>N,
   fprintf(logfile,'kmeans: error: K must be lower than the number of data points\n');
-elseif size(mu,1)~=D || size(mu,2)~=K,
+elseif D0~=D || K0~=K,
   fprintf(logfile,'kmeans: error: incompatible size of initial means\n');
 else
 
   ind=zeros(N,1);
   if ~exist('mu0','var'),
     if exist('seed','var'),
-      rand('seed',seed);
+      rand('state',seed);
     end
     [k,ind]=sort(rand(N,1));
     mu=X(:,ind(1:K));
+  else
+    mu=mu0;
   end
 
   I=0;
@@ -110,19 +119,19 @@ else
       dist(distk<dist)=distk(distk<dist);
     end
 
-    if logfile>0,
+    if verbose>0,
       fprintf(logfile,'%d %f\n',I,sum(dist)/N);
     end
 
     if I==maxI,
-      if logfile>0,
+      if verbose>0,
         fprintf(logfile,'kmeans: reached maximum number of iterations\n');
       end
       break;
     end
 
     if sum(ind~=pind)==0,
-      if logfile>0,
+      if verbose>0,
         fprintf(logfile,'kmeans: algorithm converged\n');
       end
       break;
@@ -130,7 +139,7 @@ else
 
     kk=unique(ind);
     if size(kk,1)~=K,
-      if logfile>0,
+      if verbose>0,
         fprintf(logfile,'kmeans: warning: %d empty means, setting them to random samples (I=%d)\n',K-size(kk,1),I);
       end
       for k=1:K,
@@ -149,7 +158,7 @@ else
 
   tm=toc;
 
-  if logfile>0,
+  if verbose>0,
     fprintf(logfile,'kmeans: number of iterations %d\n',I);
     fprintf(logfile,'kmeans: average iteration time %f\n',tm/I);
   end

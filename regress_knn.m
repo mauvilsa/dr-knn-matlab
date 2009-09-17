@@ -91,8 +91,10 @@ else
     ind2=ind2(ones(N,1),:);
     ind2=ind2(:);
 
+    mindist=100*sqrt(1/realmax); %%% g(d)=1/d
+
     %dist=reshape(exp(-sum(power(repmat(X,1,M)-P(:,ind),2),1)),N,M); %%% g(d)=exp(-d)
-    dist=sum(power(repmat(X,1,M)-P(:,ind),2),1); dist(dist==0)=realmin; dist=reshape(1./dist,N,M); %%% g(d)=1/d
+    dist=sum(power(repmat(X,1,M)-P(:,ind),2),1); dist(dist<mindist)=mindist; dist=reshape(1./dist,N,M); %%% g(d)=1/d
 
     if K==0,
       S=sum(dist,2);
