@@ -12,21 +12,21 @@ function [bestB, bestP, bestPP] = lppkr(X, XX, B0, P0, PP0, varargin)
 %     PP0     - Initial dependent prototype data.
 %
 %   Input (optional):
-%     'beta',BETA                - Sigmoid slope (default=1)
-%     'rateB',RATEB              - Projection base learning rate (default=0.5)
-%     'rateP',RATEP              - Ind. Prototypes learning rate (default=0.5)
+%     'slope',SLOPE              - Tanh slope (default=1)
+%     'rateB',RATEB              - Projection base learning rate (default=0.1)
+%     'rateP',RATEP              - Ind. Prototypes learning rate (default=0.1)
 %     'ratePP',RATEPP            - Dep. Prototypes learning rate (default=0)
 %     'rates',RATES              - Set all learning rates to RATES
 %     'probe',PROBE              - Probe learning rates (default=false)
-%     'probeI',PROBEI            - Iterations for probing learning rates (default=100)
-%     'autoprobe',(true|false)   - Automatic probing of learning rates (default=false)
+%     'probeI',PROBEI            - Iterations for probing (default=100)
+%     'autoprobe',(true|false)   - Automatic probing (default=false)
 %     'epsilon',EPSILON          - Convergence criteria (default=1e-7)
 %     'minI',MINI                - Minimum number of iterations (default=100)
 %     'maxI',MAXI                - Maximum number of iterations (default=1000)
 %     'seed',SEED                - Random seed (default=system)
 %     'stochastic',(true|false)  - Stochastic gradient descend (default=true)
-%     'stats',STAT               - Statistics every STAT iterations (default={b:1,s:1000})
-%     'orthoit',OIT              - Orthogonalize every OIT iterations (default={b:1,s:1000})
+%     'stats',STAT               - Statistics every STAT (default={b:1,s:1000})
+%     'orthoit',OIT              - Orthogonalize every OIT (default={b:1,s:1000})
 %     'orthonormal',(true|false) - Orthonormal projection base (default=true)
 %     'orthogonal',(true|false)  - Orthogonal projection base (default=false)
 %     'normalize',(true|false)   - Normalize training data (default=false)
@@ -68,12 +68,13 @@ if strncmp(X,'-v',2),
   return;
 end
 
-beta=1;
-rateB=0.5;
-rateP=0.5;
+slope=1;
+rateB=0.1;
+rateP=0.1;
 ratePP=0;
 probeI=100;
 probemode=false;
+autoprobe=false;
 
 epsilon=1e-7;
 minI=100;
@@ -97,7 +98,7 @@ argerr=false;
 while size(varargin,2)>0,
   if ~ischar(varargin{n}) || size(varargin,2)<n+1,
     argerr=true;
-  elseif strcmp(varargin{n},'beta') || ...
+  elseif strcmp(varargin{n},'slope') || ...
          strcmp(varargin{n},'rateB') || ...
          strcmp(varargin{n},'rateP')  || ...
          strcmp(varargin{n},'ratePP')  || ...
@@ -253,7 +254,7 @@ else
   end
 
   if autoprobe,
-    probe=[0 1e-3 1e-2 1e-1 1];
+    probe=[0 1e-4 1e-3 1e-2 1e-1 1];
     probe=probe(ones(3,1),:);
   end
   if exist('probe','var'),
@@ -324,10 +325,10 @@ else
     rateP=2*rateP;
     ratePP=2*ratePP;
   end
-  beta=beta/DD;
-  rateB=2*rateB*beta/N;
-  rateP=2*rateP*beta/N;
-  ratePP=2*ratePP*beta/N;
+  slope=slope/DD;
+  rateB=2*rateB*slope/N;
+  rateP=2*rateP*slope/N;
+  ratePP=2*ratePP*slope/N;
   NDD=N*DD;
 
   B=B0;
@@ -387,7 +388,7 @@ else
       dist=dist.*dist; %%% g(d)=1/d, g(d)=1/(d+R/100)
 
       dXX=mXX-XX;
-      tanhXX=tanh(beta*sum(dXX.*dXX,1))';
+      tanhXX=tanh(slope*sum(dXX.*dXX,1))';
       J=sum(tanhXX)/N;
       E=sqrt(sum(sum(dXX.*dXX,2).*ppsd)/NDD);
 
