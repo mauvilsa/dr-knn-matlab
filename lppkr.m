@@ -5,21 +5,22 @@ function [bestB, bestP, bestPP] = lppkr(X, XX, B0, P0, PP0, varargin)
 % [B, P, PP] = lppkr(X, XX, B0, P0, PP0, ...)
 %
 %   Input:
-%     X       - Independent trainig data. Each column vector is a data point.
+%     X       - Independent training data. Each column vector is a data point.
 %     XX      - Dependent training data.
 %     B0      - Initial projection base.
 %     P0      - Initial independent prototype data.
 %     PP0     - Initial dependent prototype data.
 %
 %   Input (optional):
-%     'beta',BETA                - Sigmoid slope (defaul=1)
+%     'beta',BETA                - Sigmoid slope (default=1)
 %     'rateB',RATEB              - Projection base learning rate (default=0.5)
 %     'rateP',RATEP              - Ind. Prototypes learning rate (default=0.5)
 %     'ratePP',RATEPP            - Dep. Prototypes learning rate (default=0)
 %     'rates',RATES              - Set all learning rates to RATES
 %     'probe',PROBE              - Probe learning rates (default=false)
 %     'probeI',PROBEI            - Iterations for probing learning rates (default=100)
-%     'epsilon',EPSILON          - Convergence criterium (default=1e-7)
+%     'autoprobe',(true|false)   - Automatic probing of learning rates (default=false)
+%     'epsilon',EPSILON          - Convergence criteria (default=1e-7)
 %     'minI',MINI                - Minimum number of iterations (default=100)
 %     'maxI',MAXI                - Maximum number of iterations (default=1000)
 %     'seed',SEED                - Random seed (default=system)
@@ -122,8 +123,7 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'linearnorm') || ...
          strcmp(varargin{n},'orthonormal') || ...
          strcmp(varargin{n},'orthogonal') || ...
-         strcmp(varargin{n},'balance') || ...
-         strcmp(varargin{n},'protoweight') || ...
+         strcmp(varargin{n},'autoprobe') || ...
          strcmp(varargin{n},'verbose') || ...
          strcmp(varargin{n},'stochastic'),
     eval([varargin{n},'=varargin{n+1};']);
@@ -252,6 +252,10 @@ else
     end
   end
 
+  if autoprobe,
+    probe=[0 1e-3 1e-2 1e-1 1];
+    probe=probe(ones(3,1),:);
+  end
   if exist('probe','var'),
     bestIJE=[0,1];
     ratesB=unique(probe(1,probe(1,:)>=0));
