@@ -37,16 +37,16 @@ function [bestB, bestP, bestPP] = lppkr(X, XX, B0, P0, PP0, varargin)
 %                 'cosine')
 %
 %   Output:
-%     B   - Final learned projection base
-%     P   - Final learned independent prototype data
-%     PP  - Final learned dependent prototype data
+%     B       - Final learned projection base
+%     P       - Final learned independent prototype data
+%     PP      - Final learned dependent prototype data
 %
-%
-% Version: 1.04 -- Sep/2009
+% $Revision$
+% $Date$
 %
 
 %
-% Copyright (C) 2008 Mauricio Villegas (mvillegas AT iti.upv.es)
+% Copyright (C) 2009 Mauricio Villegas (mvillegas AT iti.upv.es)
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -61,6 +61,11 @@ function [bestB, bestP, bestPP] = lppkr(X, XX, B0, P0, PP0, varargin)
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <http://www.gnu.org/licenses/>.
 %
+
+if strncmp(X,'-v',2),
+  unix('echo "$Revision$- $Date$-" | sed "s/^:/lppkr: revision/g; s/ : /[/g; s/ (.*)/]/g;"');
+  return;
+end
 
 beta=1;
 rateB=0.5;
@@ -101,6 +106,7 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'maxI') || ...
          strcmp(varargin{n},'probeI') || ...
          strcmp(varargin{n},'probe') || ...
+         strcmp(varargin{n},'probemode') || ...
          strcmp(varargin{n},'logfile') || ...
          strcmp(varargin{n},'stats') || ...
          strcmp(varargin{n},'orthoit') || ...
@@ -119,7 +125,6 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'balance') || ...
          strcmp(varargin{n},'protoweight') || ...
          strcmp(varargin{n},'verbose') || ...
-         strcmp(varargin{n},'probemode') || ...
          strcmp(varargin{n},'stochastic'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~islogical(varargin{n+1}),
@@ -179,6 +184,19 @@ else
   if probemode,
     normalize=false;
     verbose=false;
+    maxI=probemode;
+    ppmu=zeros(DD,1);
+    ppsd=ones(DD,1);
+  else
+    ppmu=mean(PP0,2);
+    ppsd=std(PP0,1,2);
+    PP0=(PP0-ppmu(:,ones(M,1)))./ppsd(:,ones(M,1));
+    XX=(XX-ppmu(:,ones(N,1)))./ppsd(:,ones(N,1));
+    ppsd=ppsd.*ppsd;
+  end
+
+  if ~verbose,
+    logfile=fopen('/dev/null');
   end
 
   if normalize || linearnorm,
@@ -209,12 +227,6 @@ else
     B0=IW*B0;
   end
 
-  ppmu=mean(PP0,2);
-  ppsd=std(PP0,1,2);
-  PP0=(PP0-ppmu(:,ones(M,1)))./ppsd(:,ones(M,1));
-  XX=(XX-ppmu(:,ones(N,1)))./ppsd(:,ones(N,1));
-  ppsd=ppsd.*ppsd;
-
   if orthonormal,
     B0=orthonorm(B0);
   elseif orthogonal,
@@ -241,12 +253,7 @@ else
   end
 
   if exist('probe','var'),
-    unstable=0.2*probeI;
-    bestI=0;
-    bestJ=1.0;
-    rateB=0;
-    rateP=0;
-    ratePP=0;
+    bestIJE=[0,1];
     ratesB=unique(probe(1,probe(1,:)>=0));
     ratesP=unique(probe(2,probe(2,:)>=0));
     ratesPP=unique(probe(3,probe(3,:)>=0));
@@ -260,33 +267,27 @@ else
         nPP=1;
         while nPP<=size(ratesPP,2),
           rPP=ratesPP(nPP);
-          if rB==0 && rP==0 && rPP==0,
-            continue;
-          end
-          [I, J] = lppkr(X,XX,B0,P0,PP0, 'probemode',true, ...
-                         'rateB',rB,'rateP',rP,'ratePP',rPP, 'maxI',probeI );
-          if I>bestI || (I==bestI && J<bestJ),
-            if verbose,
-              fprintf(logfile,'lppkr_probeRates: rates={%.2E %.2E %.2E} => impI=%.2f J=%.4f ++\n',rB,rP,rPP,I/probeI,J);
-            end
-            bestI=I;
-            bestJ=J;
-            rateB=rB;
-            rateP=rP;
-            ratePP=rPP;
-          else          
-            if verbose,
-              fprintf(logfile,'lppkr_probeRates: rates={%.2E %.2E %.2E} => impI=%.2f J=%.4f\n',rB,rP,rPP,I/probeI,J);
-            end
-            if I<unstable,
-              if nPP==1,
-                if nP==1,
-                  nB=size(ratesB,2)+1;
+          if ~(rB==0 && rP==0 && rPP==0),
+            [I,J]=lppkr(X,XX,B0,P0,PP0,'probemode',probeI,'rates',[rB rP rPP]);
+            mark='';
+            if I>bestIJE(1) || (I==bestIJE(1) && J<bestIJE(2)),
+              bestIJE=[I,J];
+              rateB=rB;
+              rateP=rP;
+              ratePP=rPP;
+              mark=' ++';
+            else
+              if I<0.2*probeI,
+                if nPP==1,
+                  if nP==1,
+                    nB=size(ratesB,2)+1;
+                  end
+                  nP=size(ratesP,2)+1;
                 end
-                nP=size(ratesP,2)+1;
+                break;
               end
-              break;
             end
+            fprintf(logfile,'lppkr_probeRates: rates={%.2E %.2E %.2E} => impI=%.2f J=%.4f%s\n',rB,rP,rPP,I/probeI,J,mark);
           end
           nPP=nPP+1;
         end
@@ -294,11 +295,8 @@ else
       end
       nB=nB+1;
     end
-    tm=toc;
-    if verbose,
-      fprintf(logfile,'lppkr_probeRates: total time (s): %f\n',tm);
-      fprintf(logfile,'lppkr_probeRates: selected rates={%.2E %.2E %.2E}\n',rateB,rateP,ratePP);
-    end
+    fprintf(logfile,'lppkr_probeRates: total time (s): %f\n',toc);
+    fprintf(logfile,'lppkr_probeRates: selected rates={%.2E %.2E %.2E}\n',rateB,rateP,ratePP);
   end
 
   euclidean=true;
@@ -307,9 +305,15 @@ else
   end
 
   if exist('rates','var'),
-    rateB=rates;
-    rateP=rates;
-    ratePP=rates;
+    if max(size(rates))==1,
+      rateB=rates;
+      rateP=rates;
+      ratePP=rates;
+    else
+      rateB=rates(1);
+      rateP=rates(2);
+      ratePP=rates(3);
+    end
   end
   if euclidean,
     rateB=2*rateB;
@@ -328,10 +332,7 @@ else
   bestB=B0;
   bestP=P0;
   bestPP=PP0;
-  bestI=0;
-  bestJ=1;
-  bestE=Inf;
-  nimp=-1;
+  bestIJE=[0 1 Inf -1];
 
   J0=1;
   I=0;
@@ -347,10 +348,8 @@ else
   mindist=100*sqrt(1/realmax); %%% g(d)=1/d
   %mindist=R/100; %%% g(d)=1/(d+R/100)
 
-  if verbose,
-    fprintf(logfile,'lppkr: Dx=%d Dxx=%d R=%d Nx=%d\n',D,DD,R,N);
-    fprintf(logfile,'lppkr: output: iteration | J | delta(J) | rmse\n');
-  end
+  fprintf(logfile,'lppkr: Dx=%d Dxx=%d R=%d Nx=%d\n',D,DD,R,N);
+  fprintf(logfile,'lppkr: output: iteration | J | delta(J) | rmse\n');
 
   tic;
 
@@ -389,33 +388,26 @@ else
       E=sqrt(sum(sum(dXX.*dXX,2).*ppsd)/NDD);
 
       mark='';
-      if J<=bestJ,
+      if J<=bestIJE(2),
         bestB=B;
         bestP=P;
         bestPP=PP;
-        bestI=I;
-        bestJ=J;
-        bestE=E;
+        bestIJE=[I J E bestIJE(4)+1];
         mark=' *';
-        nimp=nimp+1;
       end
 
-      if verbose && mod(I,stats)==0,
+      if mod(I,stats)==0,
         fprintf(logfile,'%d\t%.9f\t%.9f\t%f%s\n',I,J,J-J0,E,mark);
       end
 
       if I>=maxI,
-        if verbose,
-          fprintf(logfile,'lppkr: reached maximum number of iterations\n');
-        end
+        fprintf(logfile,'lppkr: reached maximum number of iterations\n');
         break;
       end
 
       if I>=minI,
         if abs(J0-J)<epsilon,
-          if verbose,
-            fprintf(logfile,'lppkr: index has stabilized\n');
-          end
+          fprintf(logfile,'lppkr: index has stabilized\n');
           break;
         end
       end
@@ -429,14 +421,12 @@ else
 
       if euclidean,
 
-        %fact=repmat((1-tanhXX.*tanhXX)./S,M,1).*dist(:).*sum(repmat(dXX,1,M).*(repmat(mXX,1,M)-PP(:,ind)),1)';
         fact=reshape(fact(:,ones(R,1))'.*(repmat(rX,1,M)-rP(:,ind)),[R N M]);
         fP=-permute(sum(fact,2),[1 3 2]);
         fX=sum(fact,3);
 
       else % cosine
 
-        %fact=repmat((1-tanhXX.*tanhXX)./S,M,1).*dist(:).*sum(repmat(dXX,1,M).*(repmat(mXX,1,M)-PP(:,ind)),1)';
         fP=-permute(sum(reshape(fact(:,ones(R,1))'.*repmat(rX,1,M),[R N M]),2),[1 3 2]);
         fX=-sum(reshape(fact(:,ones(R,1))'.*rP(:,ind),[R N M]),3);
 
@@ -462,9 +452,12 @@ else
   end
 
   tm=toc;
+  fprintf(logfile,'lppkr: average iteration time (ms): %f\n',1000*tm/I);
+  fprintf(logfile,'lppkr: total time (s): %f\n',tm);
+  fprintf(logfile,'lppkr: amount of improvement iterations: %f\n',bestIJE(4)/I);
+  fprintf(logfile,'lppkr: best iteration: I=%d, J=%f, RMSE=%f\n',bestIJE(1),bestIJE(2),bestIJE(3));
 
   bestPP=bestPP.*sqrt(ppsd(:,ones(M,1)))+ppmu(:,ones(M,1));
-
   if normalize || linearnorm,
     bestP=bestP.*xsd(xsd~=0,ones(M,1))+xmu(xsd~=0,ones(M,1));
     bestB=bestB./xsd(xsd~=0,ones(R,1));
@@ -481,17 +474,13 @@ else
     bestB=W*bestB;
   end
 
-  if verbose,
-    fprintf(logfile,'lppkr: average iteration time (ms): %f\n',1000*tm/I);
-    fprintf(logfile,'lppkr: total time (s): %f\n',tm);
-    fprintf(logfile,'lppkr: amount of improvement iterations: %f\n',nimp/I);
-    fprintf(logfile,'lppkr: best iteration: I=%d, J=%f, RMSE=%f\n',bestI,bestJ,bestE);
-  end
-
   if probemode,
-    bestB=nimp;
-    bestP=bestJ;
-    bestPP=bestE;
+    bestB=bestIJE(4);
+    bestP=bestIJE(2);
+    bestPP=bestIJE(3);
+  end
+  if ~verbose,
+    fclose(logfile);
   end
 
 end
