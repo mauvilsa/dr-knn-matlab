@@ -187,6 +187,7 @@ else
   if probemode,
     normalize=false;
     verbose=false;
+    epsilon=0;
     maxI=probemode;
     ppmu=zeros(DD,1);
     ppsd=ones(DD,1);
@@ -275,7 +276,7 @@ else
         while nPP<=size(ratesPP,2),
           rPP=ratesPP(nPP);
           if ~(rB==0 && rP==0 && rPP==0),
-            [I,J]=lppkr(X,XX,B0,P0,PP0,'probemode',probeI,'rates',[rB rP rPP]);
+            [I,J]=lppkr(X,XX,B0,P0,PP0,'probemode',probeI,'rates',[rB rP rPP],'slope',slope,'orthoit',orthoit,'orthonormal',orthonormal,'orthogonal',orthogonal,'distance',distance);
             mark='';
             if I>bestIJE(1) || (I==bestIJE(1) && J<bestIJE(2)),
               bestIJE=[I,J];
