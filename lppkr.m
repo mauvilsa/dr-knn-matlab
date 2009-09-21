@@ -64,7 +64,7 @@ function [bestB, bestP, bestPP] = lppkr(X, XX, B0, P0, PP0, varargin)
 %
 
 if strncmp(X,'-v',2),
-  unix('echo "$Revision$- $Date$-" | sed "s/^:/lppkr: revision/g; s/ : /[/g; s/ (.*)/]/g;"');
+  unix('echo "$Revision$* $Date$*" | sed "s/^:/lppkr: revision/g; s/ : /[/g; s/ (.*)/]/g;"');
   return;
 end
 
@@ -75,6 +75,7 @@ ratePP=0;
 probeI=100;
 probemode=false;
 autoprobe=false;
+decrates=false;
 
 epsilon=1e-7;
 minI=100;
@@ -103,6 +104,7 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'rateP')  || ...
          strcmp(varargin{n},'ratePP')  || ...
          strcmp(varargin{n},'rates')  || ...
+         strcmp(varargin{n},'decrates')  || ...
          strcmp(varargin{n},'epsilon') || ...
          strcmp(varargin{n},'minI') || ...
          strcmp(varargin{n},'maxI') || ...
@@ -398,7 +400,32 @@ else
         bestP=P;
         bestPP=PP;
         bestIJE=[I J E bestIJE(4)+1];
+        bad=0;
+        pbad=false;
         mark=' *';
+      elseif decrates,
+        if bad>=decrates(2),
+          if mod(I,stats)==0,
+            fprintf(logfile,'%d\t%.9f\t%.9f\t%f -\n',I,J,J-J0,E);
+          end
+          rateB=decrates(1)*rateB;
+          rateP=decrates(1)*rateP;
+          ratePP=decrates(1)*ratePP;
+          B=bestB;
+          P=bestP;
+          PP=bestPP;
+          J0=J;
+          I=I+1;
+          bad=0;
+          pbad=false;
+          continue;
+        end
+        if pbad,
+          bad=bad+1;
+        else
+          bad=1;
+        end
+        pbad=true;
       end
 
       if mod(I,stats)==0,
