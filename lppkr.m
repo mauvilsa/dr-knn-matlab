@@ -168,9 +168,10 @@ DD=size(XX,1);
 R=size(B0,2);
 M=size(P0,2);
 
+minargs=5;
 if argerr,
-  fprintf(logfile,'lppkr: error: incorrect input argument (%d-%d)\n',varargin{n},varargin{n+1});
-elseif nargin-size(varargin,2)~=5,
+  fprintf(logfile,'lppkr: error: incorrect input argument %d (%d,%d)\n',n+minargs,varargin{n},varargin{n+1});
+elseif nargin-size(varargin,2)~=minargs,
   fprintf(logfile,'lppkr: error: not enough input arguments\n');
 elseif size(B0,1)~=D,
   fprintf(logfile,'lppkr: error: dimensionality of base and data must be the same\n');
@@ -184,19 +185,24 @@ elseif ~(strcmp(distance,'euclidean') || strcmp(distance,'cosine')),
   fprintf(logfile,'lppkr: error: invalid distance\n');
 else
 
+  euclidean=true;
+  if strcmp(distance,'cosine'),
+    euclidean=false;
+  end
+
   if probemode,
     normalize=false;
     verbose=false;
     epsilon=0;
     maxI=probemode;
-    ppmu=zeros(DD,1);
-    ppsd=ones(DD,1);
+    xxsd=ones(DD,1);
+    tm=0;
   else
-    ppmu=mean(PP0,2);
-    ppsd=std(PP0,1,2);
-    PP0=(PP0-ppmu(:,ones(M,1)))./ppsd(:,ones(M,1));
-    XX=(XX-ppmu(:,ones(N,1)))./ppsd(:,ones(N,1));
-    ppsd=ppsd.*ppsd;
+    xxmu=mean(XX,2);
+    xxsd=std(XX,1,2);
+    XX=(XX-xxmu(:,ones(N,1)))./xxsd(:,ones(N,1));
+    PP0=(PP0-xxmu(:,ones(M,1)))./xxsd(:,ones(M,1));
+    xxsd=xxsd.*xxsd;
   end
 
   if ~verbose,
@@ -205,7 +211,10 @@ else
 
   if normalize || linearnorm,
     xmu=mean(X,2);
-    xsd=std(X,1,2)*sqrt(D);
+    xsd=std(X,1,2);
+    if euclidean,
+      xsd=R*xsd;
+    end
     if linearnorm,
       xsd=max(xsd)*ones(size(xsd));
     end
@@ -220,10 +229,12 @@ else
     end
   elseif whiten,
     [W,V]=pca(X);
-    W=W(:,V>1e-9);
-    V=V(V>1e-9);
+    W=W(:,V>eps);
+    V=V(V>eps);
     W=W.*repmat((1./sqrt(V))',D,1);
-    W=(1/sqrt(R)).*W;
+    if euclidean,
+      W=(1/R).*W;
+    end
     xmu=mean(X,2);
     X=W'*(X-xmu(:,ones(N,1)));
     P0=W'*(P0-xmu(:,ones(M,1)));
@@ -257,45 +268,40 @@ else
   end
 
   if autoprobe,
-    probe=[0 1e-4 1e-3 1e-2 1e-1 1];
-    probe=probe(ones(3,1),:);
+    probe=[zeros(3,1),10.^[-4:4;-4:4;-4:4]];
   end
   if exist('probe','var'),
+    tic;
     bestIJE=[0,1];
     ratesB=unique(probe(1,probe(1,:)>=0));
     ratesP=unique(probe(2,probe(2,:)>=0));
     ratesPP=unique(probe(3,probe(3,:)>=0));
     nB=1;
-    tic;
     while nB<=size(ratesB,2),
-      rB=ratesB(nB);
       nP=1;
       while nP<=size(ratesP,2),
-        rP=ratesP(nP);
         nPP=1;
         while nPP<=size(ratesPP,2),
-          rPP=ratesPP(nPP);
-          if ~(rB==0 && rP==0 && rPP==0),
-            [I,J]=lppkr(X,XX,B0,P0,PP0,'probemode',probeI,'rates',[rB rP rPP],'slope',slope,'orthoit',orthoit,'orthonormal',orthonormal,'orthogonal',orthogonal,'distance',distance);
+          if ~(ratesB(nB)==0 && ratesP(nP)==0 && ratesPP(nPP)==0),
+            [I,J]=lppkr(X,XX,B0,P0,PP0,'probemode',probeI,'rates',[ratesB(nB) ratesP(nP) ratesPP(nPP)],'slope',slope,'orthoit',orthoit,'orthonormal',orthonormal,'orthogonal',orthogonal,'distance',distance);
             mark='';
             if I>bestIJE(1) || (I==bestIJE(1) && J<bestIJE(2)),
               bestIJE=[I,J];
-              rateB=rB;
-              rateP=rP;
-              ratePP=rPP;
+              rateB=ratesB(nB);
+              rateP=ratesP(nP);
+              ratePP=ratesPP(nPP);
               mark=' ++';
-            else
-              if I<0.2*probeI,
-                if nPP==1,
-                  if nP==1,
-                    nB=size(ratesB,2)+1;
-                  end
-                  nP=size(ratesP,2)+1;
-                end
-                break;
-              end
             end
-            fprintf(logfile,'lppkr_probeRates: rates={%.2E %.2E %.2E} => impI=%.2f J=%.4f%s\n',rB,rP,rPP,I/probeI,J,mark);
+            fprintf(logfile,'lppkr_probeRates: rates={%.2E %.2E %.2E} => impI=%.2f J=%.4f%s\n',ratesB(nB),ratesP(nP),ratesPP(nPP),I/probeI,J,mark);
+            if I<0.2*probeI,
+              if nPP==1,
+                if nP==1,
+                  nB=size(ratesB,2)+1;
+                end
+                nP=size(ratesP,2)+1;
+              end
+              break;
+            end
           end
           nPP=nPP+1;
         end
@@ -304,12 +310,7 @@ else
       nB=nB+1;
     end
     fprintf(logfile,'lppkr_probeRates: total time (s): %f\n',toc);
-    fprintf(logfile,'lppkr_probeRates: selected rates={%.2E %.2E %.2E}\n',rateB,rateP,ratePP);
-  end
-
-  euclidean=true;
-  if strcmp(distance,'cosine'),
-    euclidean=false;
+    fprintf(logfile,'lppkr_probeRates: selected rates={%.2E %.2E %.2E} impI=%.2f J=%.4f\n',rateB,rateP,ratePP,bestIJE(1)/probeI,bestIJE(2));
   end
 
   if exist('rates','var'),
@@ -359,7 +360,9 @@ else
   fprintf(logfile,'lppkr: Dx=%d Dxx=%d R=%d Nx=%d\n',D,DD,R,N);
   fprintf(logfile,'lppkr: output: iteration | J | delta(J) | rmse\n');
 
-  tic;
+  if ~probemode,
+    tic;
+  end
 
   if ~stochastic,
 
@@ -393,7 +396,7 @@ else
       dXX=mXX-XX;
       tanhXX=tanh(slope*sum(dXX.*dXX,1))';
       J=sum(tanhXX)/N;
-      E=sqrt(sum(sum(dXX.*dXX,2).*ppsd)/NDD);
+      E=sqrt(sum(sum(dXX.*dXX,2).*xxsd)/NDD);
 
       mark='';
       if J<=bestIJE(2),
@@ -484,13 +487,26 @@ else
 
   end
 
-  tm=toc;
-  fprintf(logfile,'lppkr: average iteration time (ms): %f\n',1000*tm/I);
+  if ~probemode,
+    tm=toc;
+  end
+  fprintf(logfile,'lppkr: average iteration time (ms): %f\n',1000*tm/(I+0.5));
   fprintf(logfile,'lppkr: total time (s): %f\n',tm);
-  fprintf(logfile,'lppkr: amount of improvement iterations: %f\n',bestIJE(4)/I);
+  fprintf(logfile,'lppkr: amount of improvement iterations: %f\n',bestIJE(4)/max(I,1));
   fprintf(logfile,'lppkr: best iteration: I=%d, J=%f, RMSE=%f\n',bestIJE(1),bestIJE(2),bestIJE(3));
 
-  bestPP=bestPP.*sqrt(ppsd(:,ones(M,1)))+ppmu(:,ones(M,1));
+  if ~verbose,
+    fclose(logfile);
+  end
+
+  if probemode,
+    bestB=bestIJE(4);
+    bestP=bestIJE(2);
+    bestPP=bestIJE(3);
+    return;
+  end
+
+  bestPP=bestPP.*sqrt(xxsd(:,ones(M,1)))+xxmu(:,ones(M,1));
   if normalize || linearnorm,
     bestP=bestP.*xsd(xsd~=0,ones(M,1))+xmu(xsd~=0,ones(M,1));
     bestB=bestB./xsd(xsd~=0,ones(R,1));
@@ -505,15 +521,6 @@ else
   elseif whiten,
     bestP=IW'*bestP+xmu(:,ones(M,1));
     bestB=W*bestB;
-  end
-
-  if probemode,
-    bestB=bestIJE(4);
-    bestP=bestIJE(2);
-    bestPP=bestIJE(3);
-  end
-  if ~verbose,
-    fclose(logfile);
   end
 
 end
