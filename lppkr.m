@@ -74,6 +74,7 @@ rateP=0.1;
 ratePP=0;
 probeI=100;
 probemode=false;
+probeunstable=0.2;
 autoprobe=false;
 decrates=false;
 
@@ -195,6 +196,7 @@ else
     verbose=false;
     epsilon=0;
     maxI=probemode;
+    probeunstable=probeunstable*maxI;
     xxsd=ones(DD,1);
     tm=0;
   else
@@ -292,8 +294,7 @@ else
               ratePP=ratesPP(nPP);
               mark=' ++';
             end
-            fprintf(logfile,'lppkr_probeRates: rates={%.2E %.2E %.2E} => impI=%.2f J=%.4f%s\n',ratesB(nB),ratesP(nP),ratesPP(nPP),I/probeI,J,mark);
-            if I<0.2*probeI,
+            if I<probeunstable*probeI,
               if nPP==1,
                 if nP==1,
                   nB=size(ratesB,2)+1;
@@ -302,6 +303,7 @@ else
               end
               break;
             end
+            fprintf(logfile,'lppkr_probeRates: rates={%.2E %.2E %.2E} => impI=%.2f J=%.4f%s\n',ratesB(nB),ratesP(nP),ratesPP(nPP),I/probeI,J,mark);
           end
           nPP=nPP+1;
         end
@@ -430,6 +432,12 @@ else
           bad=1;
         end
         pbad=true;
+      end
+
+      if probemode,
+        if bestIJE(4)+(maxI-I)<probeunstable,
+          break;
+        end
       end
 
       if mod(I,stats)==0,
