@@ -1,6 +1,6 @@
 function [bestB, bestP, bestPP] = lppkr(X, XX, B0, P0, PP0, varargin)
 %
-% LPPKR: Learning Projections and Prototypes for k-NN Regression
+% LPPKR: Learning Projections and Prototypes for Regression
 %
 % [B, P, PP] = lppkr(X, XX, B0, P0, PP0, ...)
 %
@@ -29,12 +29,12 @@ function [bestB, bestP, bestPP] = lppkr(X, XX, B0, P0, PP0, varargin)
 %     'orthoit',OIT              - Orthogonalize every OIT (default={b:1,s:1000})
 %     'orthonormal',(true|false) - Orthonormal projection base (default=true)
 %     'orthogonal',(true|false)  - Orthogonal projection base (default=false)
-%     'normalize',(true|false)   - Normalize training data (default=false)
-%     'linearnorm',(true|false)  - Linear normalize training data (default=true)
+%     'normalize',(true|false)   - Normalize training data (default=true)
+%     'linearnorm',(true|false)  - Linear normalize training data (default=false)
 %     'whiten',(true|false)      - Whiten the training data (default=false)
 %     'logfile',FID              - Output log file (default=stderr)
 %     'verbose',(true|false)     - Verbose (default=true)
-%     'distance',('euclidean'|   - Used distance (default='euclidean')
+%     'distance',('euclidean'|   - Distance (default='euclidean')
 %                 'cosine')
 %
 %   Output:
@@ -47,7 +47,7 @@ function [bestB, bestP, bestPP] = lppkr(X, XX, B0, P0, PP0, varargin)
 %
 
 %
-% Copyright (C) 2009 Mauricio Villegas (mvillegas AT iti.upv.es)
+% Copyright (C) 2008-2009 Mauricio Villegas (mvillegas AT iti.upv.es)
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -72,6 +72,7 @@ slope=1;
 rateB=0.1;
 rateP=0.1;
 ratePP=0;
+
 probeI=100;
 probemode=false;
 probeunstable=0.2;
@@ -117,7 +118,7 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'orthoit') || ...
          strcmp(varargin{n},'seed'),
     eval([varargin{n},'=varargin{n+1};']);
-    if ~isnumeric(varargin{n+1}) || sum(varargin{n+1}<0),
+    if ~isnumeric(varargin{n+1}) || sum(sum(varargin{n+1}<0))~=0,
       argerr=true;
     else
       n=n+2;
@@ -171,7 +172,7 @@ M=size(P0,2);
 
 minargs=5;
 if argerr,
-  fprintf(logfile,'lppkr: error: incorrect input argument %d (%d,%d)\n',n+minargs,varargin{n},varargin{n+1});
+  fprintf(logfile,'lppkr: error: incorrect input argument %d (%s,%g)\n',n+minargs,varargin{n},varargin{n+1});
 elseif nargin-size(varargin,2)~=minargs,
   fprintf(logfile,'lppkr: error: not enough input arguments\n');
 elseif size(B0,1)~=D,
@@ -357,7 +358,6 @@ else
   ind2=ind2(:);
 
   mindist=100*sqrt(1/realmax); %%% g(d)=1/d
-  %mindist=R/100; %%% g(d)=1/(d+R/100)
 
   fprintf(logfile,'lppkr: Dx=%d Dxx=%d R=%d Nx=%d\n',D,DD,R,N);
   fprintf(logfile,'lppkr: output: iteration | J | delta(J) | rmse\n');
@@ -377,7 +377,6 @@ else
 
         %dist=reshape(exp(-sum(power(repmat(rX,1,M)-rP(:,ind),2),1)),N,M); %%% g(d)=exp(-d)
         dist=sum(power(repmat(rX,1,M)-rP(:,ind),2),1); dist(dist<mindist)=mindist; dist=reshape(1./dist,N,M); %%% g(d)=1/d
-        %dist=reshape(1./(sum(power(repmat(rX,1,M)-rP(:,ind),2),1)+mindist),N,M); %%% g(d)=1/(d+R/100)
 
       else % cosine
 
@@ -387,13 +386,12 @@ else
         rX=rX./rxsd(ones(R,1),:);
         %dist=reshape(exp(-(1-sum(repmat(rX,1,M).*rP(:,ind),1))),N,M); %%% g(d)=exp(-d)
         dist=1-sum(repmat(rX,1,M).*rP(:,ind),1); dist(dist<mindist)=mindist; dist=reshape(1./dist,N,M); %%% g(d)=1/d
-        %dist=reshape(1./(1-sum(repmat(rX,1,M).*rP(:,ind),1)+mindist),N,M); %%% g(d)=1/(d+R/100)
 
       end
 
       S=sum(dist,2);
       mXX=(reshape(sum(repmat(dist,DD,1).*PP(ind2,:),2),N,DD)./S(:,ones(DD,1)))';
-      dist=dist.*dist; %%% g(d)=1/d, g(d)=1/(d+R/100)
+      dist=dist.*dist; %%% g(d)=1/d
 
       dXX=mXX-XX;
       tanhXX=tanh(slope*sum(dXX.*dXX,1))';

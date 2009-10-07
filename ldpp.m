@@ -1,6 +1,6 @@
 function [bestB, bestP] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
 %
-% LDPP: Learning Discriminative Projections and Prototypes
+% LDPP: Learning Discriminative Projections and Prototypes for NN Classification
 %
 % [B, P] = ldpp(X, Xlabels, B0, P0, Plabels, ...)
 %
@@ -12,30 +12,35 @@ function [bestB, bestP] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
 %     Plabels - Prototype class labels.
 %
 %   Input (optional):
-%     'beta',BETA                - Sigmoid slope (defaul=10)
-%     'gamma',GAMMA              - Projection base learning rate (default=0.5)
-%     'eta',ETA                  - Prototypes learning rate (default=100)
-%     'epsilon',EPSILON          - Convergence criterium (default=1e-7)
+%     'slope',SLOPE              - Sigmoid slope (defaul=10)
+%     'rateB',RATEB              - Projection base learning rate (default=0.5)
+%     'rateP',RATEP              - Prototypes learning rate (default=100)
+%     'rates',RATES              - Set all learning rates to RATES
+%     'probe',PROBE              - Probe learning rates (default=false)
+%     'probeI',PROBEI            - Iterations for probing (default=100)
+%     'autoprobe',(true|false)   - Automatic probing (default=false)
+%     'epsilon',EPSILON          - Convergence criteria (default=1e-7)
 %     'minI',MINI                - Minimum number of iterations (default=100)
 %     'maxI',MAXI                - Maximum number of iterations (default=1000)
 %     'prior',PRIOR              - A priori probabilities (default=Nc/N)
 %     'balance',(true|false)     - A priori probabilities = 1/C (default=false)
-%     'stats',STAT               - Statistics every STAT iterations (default=1000)
 %     'seed',SEED                - Random seed (default=system)
-%     'stochastic',(true|false)  - Stochastic gradient ascend (default=true)
-%     'orthoit',OIT              - Orthogonalize every OIT iterations (default=1)
+%     'stochastic',(true|false)  - Stochastic gradient descend (default=true)
+%     'stats',STAT               - Statistics every STAT (default={b:1,s:1000})
+%     'orthoit',OIT              - Orthogonalize every OIT (default={b:1,s:1000})
 %     'orthonormal',(true|false) - Orthonormal projection base (default=true)
 %     'orthogonal',(true|false)  - Orthogonal projection base (default=false)
 %     'normalize',(true|false)   - Normalize training data (default=true)
+%     'linearnorm',(true|false)  - Linear normalize training data (default=false)
 %     'whiten',(true|false)      - Whiten the training data (default=false)
-%     'protoweight',(true|false) - Weigth prototype update (default=false)
 %     'logfile',FID              - Output log file (default=stderr)
-%     'distance',('euclidean'|   - NN distance (default='euclidean')
+%     'verbose',(true|false)     - Verbose (default=true)
+%     'distance',('euclidean'|   - Distance (default='euclidean')
 %                 'cosine')
 %
 %   Output:
-%     B   - Final learned projection base
-%     P   - Final learned prototypes
+%     B       - Final learned projection base
+%     P       - Final learned prototypes
 %
 %
 % Reference:
@@ -45,11 +50,12 @@ function [bestB, bestP] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
 %   CVPR'2008.
 %
 %
-% Version: 1.05 -- Mar/2009
+% $Revision$
+% $Date$
 %
 
 %
-% Copyright (C) 2008 Mauricio Villegas (mvillegas AT iti.upv.es)
+% Copyright (C) 2008-2009 Mauricio Villegas (mvillegas AT iti.upv.es)
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -65,49 +71,74 @@ function [bestB, bestP] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
 % along with this program. If not, see <http://www.gnu.org/licenses/>.
 %
 
-beta=10;
-gamma=0.5;
-eta=100;
+if strncmp(X,'-v',2),
+  unix('echo "$Revision$* $Date$*" | sed "s/^:/ldpp: revision/g; s/ : /[/g; s/ (.*)/]/g;"');
+  return;
+end
+
+slope=10;
+rateB=0.5;
+rateP=100;
+
+probeI=100;
+probemode=false;
+probeunstable=0.2;
+autoprobe=false;
+decrates=false;
 
 epsilon=1e-7;
 minI=100;
 maxI=1000;
 
 stochastic=false;
-seed=rand('seed');
-stats=1000;
-orthoit=100;
 
 orthonormal=true;
 orthogonal=false;
 normalize=true;
 whiten=false;
+linearnorm=false;
 balance=false;
-protoweight=false;
+
 distance='euclidean';
 
 logfile=2;
+verbose=true;
 
 n=1;
 argerr=false;
 while size(varargin,2)>0,
   if ~ischar(varargin{n}) || size(varargin,2)<n+1,
     argerr=true;
-  elseif strcmp(varargin{n},'beta') || strcmp(varargin{n},'gamma') || ...
-         strcmp(varargin{n},'eta')  || strcmp(varargin{n},'epsilon') || ...
-         strcmp(varargin{n},'minI') || strcmp(varargin{n},'maxI') || ...
-         strcmp(varargin{n},'prior') || strcmp(varargin{n},'logfile') || ...
-         strcmp(varargin{n},'stats') || strcmp(varargin{n},'orthoit') || ...
+  elseif strcmp(varargin{n},'slope') || ...
+         strcmp(varargin{n},'rateB') || ...
+         strcmp(varargin{n},'rateP')  || ...
+         strcmp(varargin{n},'rates')  || ...
+         strcmp(varargin{n},'decrates')  || ...
+         strcmp(varargin{n},'epsilon') || ...
+         strcmp(varargin{n},'minI') || ...
+         strcmp(varargin{n},'maxI') || ...
+         strcmp(varargin{n},'prior') || ...
+         strcmp(varargin{n},'probeI') || ...
+         strcmp(varargin{n},'probe') || ...
+         strcmp(varargin{n},'probemode') || ...
+         strcmp(varargin{n},'logfile') || ...
+         strcmp(varargin{n},'stats') || ...
+         strcmp(varargin{n},'orthoit') || ...
          strcmp(varargin{n},'seed'),
     eval([varargin{n},'=varargin{n+1};']);
-    if ~isnumeric(varargin{n+1}) || sum(varargin{n+1}<0),
+    if ~isnumeric(varargin{n+1}) || sum(sum(varargin{n+1}<0))~=0,
       argerr=true;
     else
       n=n+2;
     end
-  elseif strcmp(varargin{n},'normalize') || strcmp(varargin{n},'whiten') || ...
-         strcmp(varargin{n},'orthonormal') || strcmp(varargin{n},'orthogonal') || ...
-         strcmp(varargin{n},'balance') || strcmp(varargin{n},'protoweight') || ...
+  elseif strcmp(varargin{n},'normalize') || ...
+         strcmp(varargin{n},'whiten') || ...
+         strcmp(varargin{n},'linearnorm') || ...
+         strcmp(varargin{n},'orthonormal') || ...
+         strcmp(varargin{n},'orthogonal') || ...
+         strcmp(varargin{n},'autoprobe') || ...
+         strcmp(varargin{n},'balance') || ...
+         strcmp(varargin{n},'verbose') || ...
          strcmp(varargin{n},'stochastic'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~islogical(varargin{n+1}),
@@ -115,9 +146,11 @@ while size(varargin,2)>0,
     else
       if varargin{n+1}==true,
         if strcmp(varargin{n},'normalize'),
-          whiten=false;
+          whiten=false;    linearnorm=false;
         elseif strcmp(varargin{n},'whiten'),
-          normalize=false;
+          normalize=false; linearnorm=false;
+        elseif strcmp(varargin{n},'linearnorm'),
+          normalize=false; whiten=false;
         elseif strcmp(varargin{n},'orthonormal'),
           orthogonal=false;
         elseif strcmp(varargin{n},'orthogonal'),
@@ -141,15 +174,15 @@ while size(varargin,2)>0,
   end
 end
 
-N=size(X,2);
-D=size(X,1);
+[D,N]=size(X);
+C=max(size(unique(Plabels)));
 R=size(B0,2);
 M=size(P0,2);
-C=max(size(unique(Plabels)));
 
+minargs=5;
 if argerr,
-  fprintf(logfile,'ldpp: error: incorrect input argument (%d-%d)\n',varargin{n},varargin{n+1});
-elseif nargin-size(varargin,2)~=5,
+  fprintf(logfile,'ldpp: error: incorrect input argument %d (%s,%g)\n',n+minargs,varargin{n},varargin{n+1});
+elseif nargin-size(varargin,2)~=minargs,
   fprintf(logfile,'ldpp: error: not enough input arguments\n');
 elseif max(size(Xlabels))~=N || min(size(Xlabels))~=1,
   fprintf(logfile,'ldpp: error: Xlabels must be a vector with size the same as the number of data points\n');
@@ -169,9 +202,33 @@ elseif ~(strcmp(distance,'euclidean') || strcmp(distance,'cosine')),
   fprintf(logfile,'ldpp: error: invalid distance\n');
 else
 
-  if normalize,
+  euclidean=true;
+  if strcmp(distance,'cosine'),
+    euclidean=false;
+  end
+
+  if probemode,
+    normalize=false;
+    verbose=false;
+    epsilon=0;
+    maxI=probemode;
+    probeunstable=probeunstable*maxI;
+    tm=0;
+  end
+
+  if ~verbose,
+    logfile=fopen('/dev/null');
+  end
+
+  if normalize || linearnorm,
     xmu=mean(X,2);
     xsd=std(X,1,2);
+    if euclidean,
+      xsd=R*xsd;
+    end
+    if linearnorm,
+      xsd=max(xsd)*ones(size(xsd));
+    end
     X=(X-xmu(:,ones(N,1)))./xsd(:,ones(N,1));
     P0=(P0-xmu(:,ones(M,1)))./xsd(:,ones(M,1));
     B0=B0.*xsd(:,ones(R,1));
@@ -183,10 +240,12 @@ else
     end
   elseif whiten,
     [W,V]=pca(X);
-    W=W(:,V>1e-9);
-    V=V(V>1e-9);
+    W=W(:,V>eps);
+    V=V(V>eps);
     W=W.*repmat((1./sqrt(V))',D,1);
-    W=(1/sqrt(R)).*W;
+    if euclidean,
+      W=(1/R).*W;
+    end
     xmu=mean(X,2);
     X=W'*(X-xmu(:,ones(N,1)));
     P0=W'*(P0-xmu(:,ones(M,1)));
@@ -200,16 +259,18 @@ else
     B0=orthounit(B0);
   end
 
-  clab=unique(Plabels);
-  if clab(1)~=1 || clab(end)~=C || max(size(clab))~=C,
-    nPlabels=ones(size(Plabels));
-    nXlabels=ones(size(Xlabels));
-    for c=2:C,
-      nPlabels(Plabels==clab(c))=c;
-      nXlabels(Xlabels==clab(c))=c;
+  if ~probemode,
+    clab=unique(Plabels);
+    if clab(1)~=1 || clab(end)~=C || max(size(clab))~=C,
+      nPlabels=ones(size(Plabels));
+      nXlabels=ones(size(Xlabels));
+      for c=2:C,
+        nPlabels(Plabels==clab(c))=c;
+        nXlabels(Xlabels==clab(c))=c;
+      end
+      Plabels=nPlabels;
+      Xlabels=nXlabels;
     end
-    Plabels=nPlabels;
-    Xlabels=nXlabels;
   end
 
   if balance,
@@ -223,8 +284,12 @@ else
     end
   end
 
+  cfact=zeros(N,1);
+  for c=1:C,
+    cfact(Xlabels==c)=prior(c)/sum(Xlabels==c);
+  end
+
   if stochastic,
-    rand('seed',seed);
     [Xlabels,srt]=sort(Xlabels);
     X=X(:,srt);
     cumprior=cumsum(prior);
@@ -235,205 +300,127 @@ else
       nc(c)=sum(Xlabels==c);
       cnc(c)=cnc(c-1)+nc(c-1);
     end
+    if exist('seed','var'),
+      rand('state',seed);
+    end
+    if ~exist('stats','var'),
+      stats=1000;
+    end
+    if ~exist('orthoit','var'),
+      orthoit=1000;
+    end
+  else
+    if ~exist('stats','var'),
+      stats=1;
+    end
+    if ~exist('orthoit','var'),
+      orthoit=1;
+    end
   end
 
-  cfact=zeros(N,1);
-  for c=1:C,
-    cfact(Xlabels==c)=prior(c)/sum(Xlabels==c);
+  if autoprobe,
+    probe=[zeros(2,1),10.^[-4:4;-4:4]];
+  end
+  if exist('probe','var'),
+    tic;
+    bestIJE=[0,1];
+    ratesB=unique(probe(1,probe(1,:)>=0));
+    ratesP=unique(probe(2,probe(2,:)>=0));
+    nB=1;
+    while nB<=size(ratesB,2),
+      nP=1;
+      while nP<=size(ratesP,2),
+        if ~(ratesB(nB)==0 && ratesP(nP)==0),
+          [I,J]=ldpp(X,Xlabels,B0,P0,Plabels,'probemode',probeI,'rates',[ratesB(nB) ratesP(nP)],'slope',slope,'orthoit',orthoit,'orthonormal',orthonormal,'orthogonal',orthogonal,'distance',distance,'stochastic',stochastic);
+          mark='';
+          if I>bestIJE(1) || (I==bestIJE(1) && J<bestIJE(2)),
+            bestIJE=[I,J];
+            rateB=ratesB(nB);
+            rateP=ratesP(nP);
+            mark=' ++';
+          end
+          if I<probeunstable*probeI,
+            if nP==1,
+              nB=size(ratesB,2)+1;
+            end
+            break;
+          end
+          fprintf(logfile,'ldpp_probeRates: rates={%.2E %.2E} => impI=%.2f J=%.4f%s\n',ratesB(nB),ratesP(nP),I/probeI,J,mark);
+        end
+        nP=nP+1;
+      end
+      nB=nB+1;
+    end
+    fprintf(logfile,'ldpp_probeRates: total time (s): %f\n',toc);
+    fprintf(logfile,'ldpp_probeRates: selected rates={%.2E %.2E} impI=%.2f J=%.4f\n',rateB,rateP,bestIJE(1)/probeI,bestIJE(2));
   end
 
-  euclidean=true;
-  if strcmp(distance,'cosine'),
-    euclidean=false;
+  if exist('rates','var'),
+    if max(size(rates))==1,
+      rateB=rates;
+      rateP=rates;
+    else
+      rateB=rates(1);
+      rateP=rates(2);
+    end
   end
-
   if euclidean,
-    gamma=2*gamma;
-    eta=2*eta;
+    rateB=2*rateB;
+    rateP=2*rateP;
   end
-
-  dist=zeros(M,1);
-  ds=zeros(N,1);
-  dd=zeros(N,1);
-  is=zeros(N,1);
-  id=zeros(N,1);
 
   B=B0;
   P=P0;
   bestB=B0;
   bestP=P0;
-  bestI=0;
-  bestJ=1;
-  bestE=1;
+  bestIJE=[0 1 1 -1];
 
   J0=1;
   I=0;
 
+  sel=Plabels(:,ones(N,1))'==Xlabels(:,ones(M,1));
+
+  ind=1:M;
+  ind=ind(ones(N,1),:);
+  ind=ind(:);
+
+  fprintf(logfile,'ldpp: D=%d C=%d R=%d N=%d\n',D,C,R,N);
   fprintf(logfile,'ldpp: output: iteration | J | delta(J) | error\n');
 
-  tic;
+  if ~probemode,
+    tic;
+  end
 
   if ~stochastic,
 
-  while 1,
-
-    rX=B'*X;
-    rP=B'*P;
-
-    if euclidean,
-
-      for n=1:N,
-        dist=sum(power(rX(:,n*ones(M,1))-rP,2),1);
-        ds(n)=min(dist(Plabels==Xlabels(n)));
-        dd(n)=min(dist(Plabels~=Xlabels(n)));
-        is(n)=find(dist==ds(n),1);
-        id(n)=find(dist==dd(n),1);
-      end
-
-    else
-      
-      rpsd=sqrt(sum(rP.*rP,1));
-      rP=rP./rpsd(ones(R,1),:);
-      for n=1:N,
-        rX(:,n)=rX(:,n)./sqrt(rX(:,n)'*rX(:,n));
-        dist=1-sum(rX(:,n*ones(M,1)).*rP,1);
-        ds(n)=min(dist(Plabels==Xlabels(n)));
-        dd(n)=min(dist(Plabels~=Xlabels(n)));
-        is(n)=find(dist==ds(n),1);
-        id(n)=find(dist==dd(n),1);
-      end
-
-    end
-
-    ds(ds==0)=realmin;
-    dd(dd==0)=realmin;
-    ratio=ds./dd;
-    expon=exp(beta*(1-ratio));
-    J=sum(cfact./(1+expon));
-    E=0;
-    for c=1:C,
-      E=E+prior(c)*sum(dd(Xlabels==c)<ds(Xlabels==c))/sum(Xlabels==c);
-    end
-
-    mark='';
-    if J<=bestJ,
-      bestB=B;
-      bestP=P;
-      bestI=I;
-      bestJ=J;
-      bestE=E;
-      mark=' *';
-    end
-
-    fprintf(logfile,'%d\t%.9f\t%.9f\t%f%s\n',I,J,J-J0,E,mark);
-
-    if I>=maxI,
-      fprintf(logfile,'ldpp: reached maximum number of iterations\n');
-      break;
-    end
-
-    if I>=minI,
-      if abs(J0-J)<epsilon,
-        fprintf(logfile,'ldpp: index has stabilized\n');
-        break;
-      end
-    end
-
-    J0=J;
-    I=I+1;
-
-    ratio=cfact.*beta.*ratio.*expon./((1+expon).*(1+expon));
-    ds=ratio./ds;
-    dd=ratio./dd;
-
-    if euclidean,
-
-      %rXs=(rX-rP(:,is)).*ds(:,ones(R,1))';
-      %rXd=(rX-rP(:,id)).*dd(:,ones(R,1))';
-      %for m=1:M,
-      %  rP0(:,m)=sum(rXd(:,id==m),2)-sum(rXs(:,is==m),2);
-      %end
-      %P0=B*rP0;
-      %Xs=X-P(:,is);
-      %Xd=X-P(:,id);
-      %B0=Xs*rXs'-Xd*rXd';
-
-      rXs=(rX-rP(:,is)).*ds(:,ones(R,1))';
-      rXd=(rX-rP(:,id)).*dd(:,ones(R,1))';
-      fX=rXs-rXd;
-      for m=1:M,
-        fP(:,m)=sum(rXd(:,id==m),2)-sum(rXs(:,is==m),2);
-      end
-      P0=B*fP;
-      B0=X*fX'+P*fP';
-      
-    else
-
-      rXs=rX.*ds(:,ones(R,1))';
-      rXd=rX.*dd(:,ones(R,1))';
-      for m=1:M,
-        rP0(:,m)=sum(rXd(:,id==m),2)-sum(rXs(:,is==m),2);
-      end
-      P0=B*rP0;
-      rX=rP(:,id).*dd(:,ones(R,1))'-rP(:,is).*ds(:,ones(R,1))';
-      B0=X*rX'+P(:,id)*rXd'-P(:,is)*rXs';
-
-    end
-
-    if protoweight,
-      for m=1:M,
-        Nm=sum(id==m)+sum(is==m);
-        if Nm>0,
-          P0(:,m)=P0(:,m)*(N/Nm);
-        end
-      end
-    end
-
-    B=B-gamma*B0;
-    P=P-eta*P0;
-
-    if orthonormal,
-      B=orthonorm(B);
-    elseif orthogonal,
-      B=orthounit(B);
-    end
-
-  end
-
-  else % stochastic
-
-  while 1,
-
-    if mod(I,stats)==0,
+    while 1,
 
       rX=B'*X;
       rP=B'*P;
 
       if euclidean,
 
-        for n=1:N,
-          dist=sum(power(rX(:,n*ones(M,1))-rP,2),1);
-          ds(n)=min(dist(Plabels==Xlabels(n)));
-          dd(n)=min(dist(Plabels~=Xlabels(n)));
-        end
+        ds=reshape(sum(power(repmat(rX,1,M)-rP(:,ind),2),1),N,M);
 
-      else
+      else % cosine
 
         rpsd=sqrt(sum(rP.*rP,1));
         rP=rP./rpsd(ones(R,1),:);
-        for n=1:N,
-          rX(:,n)=rX(:,n)./sqrt(rX(:,n)'*rX(:,n));
-          dist=1-sum(rX(:,n*ones(M,1)).*rP,1);
-          ds(n)=min(dist(Plabels==Xlabels(n)));
-          dd(n)=min(dist(Plabels~=Xlabels(n)));
-        end
+        rxsd=sqrt(sum(rX.*rX,1));
+        rX=rX./rxsd(ones(R,1),:);
+        ds=reshape(1-sum(repmat(rX,1,M).*rP(:,ind),1),N,M);
 
       end
 
+      dd=ds;
+      ds(~sel)=inf;
+      dd(sel)=inf;
+      [ds,is]=min(ds,[],2);
+      [dd,id]=min(dd,[],2);
       ds(ds==0)=realmin;
       dd(dd==0)=realmin;
       ratio=ds./dd;
-      expon=exp(beta*(1-ratio));
+      expon=exp(slope*(1-ratio));
       J=sum(cfact./(1+expon));
       E=0;
       for c=1:C,
@@ -441,16 +428,45 @@ else
       end
 
       mark='';
-      if J<=bestJ,
+      if J<=bestIJE(2),
         bestB=B;
         bestP=P;
-        bestI=I;
-        bestJ=J;
-        bestE=E;
+        bestIJE=[I J E bestIJE(4)+1];
+        bad=0;
+        pbad=false;
         mark=' *';
+      elseif decrates,
+        if bad>=decrates(2),
+          if mod(I,stats)==0,
+            fprintf(logfile,'%d\t%.9f\t%.9f\t%f -\n',I,J,J-J0,E);
+          end
+          rateB=decrates(1)*rateB;
+          rateP=decrates(1)*rateP;
+          B=bestB;
+          P=bestP;
+          J0=J;
+          I=I+1;
+          bad=0;
+          pbad=false;
+          continue;
+        end
+        if pbad,
+          bad=bad+1;
+        else
+          bad=1;
+        end
+        pbad=true;
       end
 
-      fprintf(logfile,'%d\t%.9f\t%.9f\t%f%s\n',I,J,J-J0,E,mark);
+      if probemode,
+        if bestIJE(4)+(maxI-I)<probeunstable,
+          break;
+        end
+      end
+
+      if mod(I,stats)==0,
+        fprintf(logfile,'%d\t%.9f\t%.9f\t%f%s\n',I,J,J-J0,E,mark);
+      end
 
       if I>=maxI,
         fprintf(logfile,'ldpp: reached maximum number of iterations\n');
@@ -465,73 +481,219 @@ else
       end
 
       J0=J;
+      I=I+1;
+
+      ratio=cfact.*slope.*ratio.*expon./((1+expon).*(1+expon));
+      ds=ratio./ds;
+      dd=ratio./dd;
+
+      if euclidean,
+
+        rXs=(rX-rP(:,is)).*ds(:,ones(R,1))';
+        rXd=(rX-rP(:,id)).*dd(:,ones(R,1))';
+        fX=rXs-rXd;
+        for m=1:M,
+          fP(:,m)=sum(rXd(:,id==m),2)-sum(rXs(:,is==m),2);
+        end
+
+      else % cosine
+
+        rXs=rX.*ds(:,ones(R,1))';
+        rXd=rX.*dd(:,ones(R,1))';
+        fX=rP(:,id).*dd(:,ones(R,1))'-rP(:,is).*ds(:,ones(R,1))';
+        for m=1:M,
+          fP(:,m)=sum(rXd(:,id==m),2)-sum(rXs(:,is==m),2);
+        end
+
+      end
+
+      P0=B*fP;
+      B0=X*fX'+P*fP';
+
+      B=B-rateB*B0;
+      P=P-rateP*P0;
+
+      if mod(I,orthoit)==0,
+        if orthonormal,
+          B=orthonorm(B);
+        elseif orthogonal,
+          B=orthounit(B);
+        end
+      end
 
     end
 
-    I=I+1;
+  else % stochastic
 
-    c=sum(rand>cumprior)+1;
-    n=cnc(c)+round((nc(c)-1)*rand)+1;
+    while 1,
 
-    rX=B'*X(:,n);
-    rP=B'*P;
+      if mod(I,stats)==0,
 
-    if euclidean,
-      dist=sum(power(rX(:,ones(M,1))-rP,2),1);
-      dsn=min(dist(Plabels==Xlabels(n)));
-      ddn=min(dist(Plabels~=Xlabels(n)));
-    else
-      rpsd=sqrt(sum(rP.*rP,1));
-      rP=rP./rpsd(ones(R,1),:);
-      rX=rX./sqrt(rX'*rX);
-      dist=1-sum(rX(:,n*ones(M,1)).*rP,1);
-      dsn=min(dist(Plabels==Xlabels(n)));
-      ddn=min(dist(Plabels~=Xlabels(n)));
+        rX=B'*X;
+        rP=B'*P;
+
+        if euclidean,
+
+          ds=reshape(sum(power(repmat(rX,1,M)-rP(:,ind),2),1),N,M);
+
+        else % cosine
+
+          rpsd=sqrt(sum(rP.*rP,1));
+          rP=rP./rpsd(ones(R,1),:);
+          rxsd=sqrt(sum(rX.*rX,1));
+          rX=rX./rxsd(ones(R,1),:);
+          ds=reshape(1-sum(repmat(rX,1,M).*rP(:,ind),1),N,M);
+
+        end
+
+        dd=ds;
+        ds(~sel)=inf;
+        dd(sel)=inf;
+        ds=min(ds,[],2);
+        dd=min(dd,[],2);
+        ds(ds==0)=realmin;
+        dd(dd==0)=realmin;
+        ratio=ds./dd;
+        expon=exp(slope*(1-ratio));
+        J=sum(cfact./(1+expon));
+        E=0;
+        for c=1:C,
+          E=E+prior(c)*sum(dd(Xlabels==c)<ds(Xlabels==c))/sum(Xlabels==c);
+        end
+
+        mark='';
+        if J<=bestJ,
+          bestB=B;
+          bestP=P;
+          bestIJE=[I J E bestIJE(4)+1];
+          bad=0;
+          pbad=false;
+          mark=' *';
+        elseif decrates,
+          if bad>=decrates(2),
+            fprintf(logfile,'%d\t%.9f\t%.9f\t%f -\n',I,J,J-J0,E);
+            rateB=decrates(1)*rateB;
+            rateP=decrates(1)*rateP;
+            B=bestB;
+            P=bestP;
+            J0=J;
+            I=I+1;
+            bad=0;
+            pbad=false;
+            continue;
+          end
+          if pbad,
+            bad=bad+1;
+          else
+            bad=1;
+          end
+          pbad=true;
+        end
+
+        if probemode,
+          if bestIJE(4)+(maxI-I)<probeunstable,
+            break;
+          end
+        end
+
+        fprintf(logfile,'%d\t%.9f\t%.9f\t%f%s\n',I,J,J-J0,E,mark);
+
+        if I>=maxI,
+          fprintf(logfile,'ldpp: reached maximum number of iterations\n');
+          break;
+        end
+
+        if I>=minI,
+          if abs(J0-J)<epsilon,
+            fprintf(logfile,'ldpp: index has stabilized\n');
+            break;
+          end
+        end
+
+        J0=J;
+
+      end
+
+      I=I+1;
+
+      c=sum(rand>cumprior)+1;
+      n=cnc(c)+round((nc(c)-1)*rand)+1;
+
+      rX=B'*X(:,n);
+      rP=B'*P;
+
+      if euclidean,
+        dist=sum(power(rX(:,ones(M,1))-rP,2),1);
+        dsn=min(dist(Plabels==Xlabels(n)));
+        ddn=min(dist(Plabels~=Xlabels(n)));
+      else
+        rpsd=sqrt(sum(rP.*rP,1));
+        rP=rP./rpsd(ones(R,1),:);
+        rX=rX./sqrt(rX'*rX);
+        dist=1-sum(rX(:,n*ones(M,1)).*rP,1);
+        dsn=min(dist(Plabels==Xlabels(n)));
+        ddn=min(dist(Plabels~=Xlabels(n)));
+      end
+
+      is=find(dist==dsn,1);
+      id=find(dist==ddn,1);
+
+      ratio=dsn./ddn;
+      expon=exp(slope*(1-ratio));
+      sigm=(cfact(n)./prior(c)).*slope.*ratio.*expon./((1+expon).*(1+expon));
+      dsn=sigm./dsn;
+      ddn=sigm./ddn;
+
+      if euclidean,
+        B0=dsn.*(X(:,n)-P(:,is))*(rX-rP(:,is))'-ddn.*(X(:,n)-P(:,id))*(rX-rP(:,id))';
+        P0=zeros(size(P));
+        P0(:,is)=-dsn.*B*(rX-rP(:,is));
+        P0(:,id)= ddn.*B*(rX-rP(:,id));
+      else
+        B0=-dsn.*(X(:,n)*rP(:,is)'+P(:,is)*rX')+ddn.*(X(:,n)*rP(:,id)'+P(:,id)*rX');
+        P0=zeros(size(P));
+        P0(:,is)=-dsn.*B*rX;
+        P0(:,id)= ddn.*B*rX;
+      end
+
+      B=B-rateB*B0;
+      P=P-rateP*P0;
+
+      if orthonormal && mod(I,orthoit)==0,
+        B=orthonorm(B);
+      elseif orthogonal,
+        B=orthounit(B);
+      end
+
     end
 
-    is=find(dist==dsn,1);
-    id=find(dist==ddn,1);
-
-    ratio=dsn./ddn;
-    expon=exp(beta*(1-ratio));
-    sigm=(cfact(n)./prior(c)).*beta.*ratio.*expon./((1+expon).*(1+expon));
-    dsn=sigm./dsn;
-    ddn=sigm./ddn;
-
-    if euclidean,
-      B0=dsn.*(X(:,n)-P(:,is))*(rX-rP(:,is))'-ddn.*(X(:,n)-P(:,id))*(rX-rP(:,id))';
-      P0=zeros(size(P));
-      P0(:,is)=-dsn.*B*(rX-rP(:,is));
-      P0(:,id)= ddn.*B*(rX-rP(:,id));
-    else
-      B0=-dsn.*(X(:,n)*rP(:,is)'+P(:,is)*rX')+ddn.*(X(:,n)*rP(:,id)'+P(:,id)*rX');
-      P0=zeros(size(P));
-      P0(:,is)=-dsn.*B*rX;
-      P0(:,id)= ddn.*B*rX;
-    end
-
-    B=B-gamma*B0;
-    P=P-eta*P0;
-
-    if orthonormal && mod(I,orthoit)==0,
-      B=orthonorm(B);
+    if orthonormal,
+      bestB=orthonorm(bestB);
     elseif orthogonal,
-      B=orthounit(B);
+      bestB=orthounit(bestB);
     end
 
   end
 
-  if orthonormal,
-    bestB=orthonorm(bestB);
-  elseif orthogonal,
-    bestB=orthounit(bestB);
+  if ~probemode,
+    tm=toc;
+  end
+  fprintf(logfile,'ldpp: average iteration time (ms): %f\n',1000*tm/(I+0.5));
+  fprintf(logfile,'ldpp: total time (s): %f\n',tm);
+  fprintf(logfile,'ldpp: amount of improvement iterations: %f\n',bestIJE(4)/max(I,1));
+  fprintf(logfile,'ldpp: best iteration: I=%d, J=%f, E=%f\n',bestIJE(1),bestIJE(2),bestIJE(3));
+
+  if ~verbose,
+    fclose(logfile);
   end
 
+  if probemode,
+    bestB=bestIJE(4);
+    bestP=bestIJE(2);
+    return;
   end
 
-  tm=toc;
-
-  if normalize,
+  if normalize || linearnorm,
     bestP=bestP.*xsd(xsd~=0,ones(M,1))+xmu(xsd~=0,ones(M,1));
     bestB=bestB./xsd(xsd~=0,ones(R,1));
     if sum(xsd==0)>0,
@@ -546,8 +708,5 @@ else
     bestP=IW'*bestP+xmu(:,ones(M,1));
     bestB=W*bestB;
   end
-
-  fprintf(logfile,'ldpp: average iteration time %f\n',tm/I);
-  fprintf(logfile,'ldpp: best iteration %d, J=%f, E=%f\n',bestI,bestJ,bestE);
 
 end
