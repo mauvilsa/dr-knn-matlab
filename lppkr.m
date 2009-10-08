@@ -4,43 +4,42 @@ function [bestB, bestP, bestPP] = lppkr(X, XX, B0, P0, PP0, varargin)
 %
 % [B, P, PP] = lppkr(X, XX, B0, P0, PP0, ...)
 %
-%   Input:
-%     X       - Independent training data. Each column vector is a data point.
-%     XX      - Dependent training data.
-%     B0      - Initial projection base.
-%     P0      - Initial independent prototype data.
-%     PP0     - Initial dependent prototype data.
+% Input:
+%   X       - Independent training data. Each column vector is a data point.
+%   XX      - Dependent training data.
+%   B0      - Initial projection base.
+%   P0      - Initial independent prototype data.
+%   PP0     - Initial dependent prototype data.
 %
-%   Input (optional):
-%     'slope',SLOPE              - Tanh slope (default=1)
-%     'rateB',RATEB              - Projection base learning rate (default=0.1)
-%     'rateP',RATEP              - Ind. Prototypes learning rate (default=0.1)
-%     'ratePP',RATEPP            - Dep. Prototypes learning rate (default=0)
-%     'rates',RATES              - Set all learning rates to RATES
-%     'probe',PROBE              - Probe learning rates (default=false)
-%     'probeI',PROBEI            - Iterations for probing (default=100)
-%     'autoprobe',(true|false)   - Automatic probing (default=false)
-%     'epsilon',EPSILON          - Convergence criteria (default=1e-7)
-%     'minI',MINI                - Minimum number of iterations (default=100)
-%     'maxI',MAXI                - Maximum number of iterations (default=1000)
-%     'seed',SEED                - Random seed (default=system)
-%     'stochastic',(true|false)  - Stochastic gradient descend (default=true)
-%     'stats',STAT               - Statistics every STAT (default={b:1,s:1000})
-%     'orthoit',OIT              - Orthogonalize every OIT (default={b:1,s:1000})
-%     'orthonormal',(true|false) - Orthonormal projection base (default=true)
-%     'orthogonal',(true|false)  - Orthogonal projection base (default=false)
-%     'normalize',(true|false)   - Normalize training data (default=true)
-%     'linearnorm',(true|false)  - Linear normalize training data (default=false)
-%     'whiten',(true|false)      - Whiten the training data (default=false)
-%     'logfile',FID              - Output log file (default=stderr)
-%     'verbose',(true|false)     - Verbose (default=true)
-%     'distance',('euclidean'|   - Distance (default='euclidean')
-%                 'cosine')
+% Input (optional):
+%   'slope',SLOPE              - Tanh slope (default=1)
+%   'rateB',RATEB              - Projection base learning rate (default=0.1)
+%   'rateP',RATEP              - Ind. Prototypes learning rate (default=0.1)
+%   'ratePP',RATEPP            - Dep. Prototypes learning rate (default=0)
+%   'probe',PROBE              - Probe learning rates (default=false)
+%   'probeI',PROBEI            - Iterations for probing (default=100)
+%   'autoprobe',(true|false)   - Automatic probing (default=false)
+%   'epsilon',EPSILON          - Convergence criteria (default=1e-7)
+%   'minI',MINI                - Minimum number of iterations (default=100)
+%   'maxI',MAXI                - Maximum number of iterations (default=1000)
+%   'seed',SEED                - Random seed (default=system)
+%   'stochastic',(true|false)  - Stochastic gradient descend (default=true)
+%   'stats',STAT               - Statistics every STAT (default={b:1,s:1000})
+%   'orthoit',OIT              - Orthogonalize every OIT (default=1)
+%   'orthonormal',(true|false) - Orthonormal projection base (default=true)
+%   'orthogonal',(true|false)  - Orthogonal projection base (default=false)
+%   'euclidean',(true|false)   - Euclidean distance (default=true)
+%   'cosine',(true|false)      - Cosine distance (default=false)
+%   'normalize',(true|false)   - Normalize training data (default=true)
+%   'linearnorm',(true|false)  - Linear normalize training data (default=false)
+%   'whiten',(true|false)      - Whiten training data (default=false)
+%   'logfile',FID              - Output log file (default=stderr)
+%   'verbose',(true|false)     - Verbose (default=true)
 %
-%   Output:
-%     B       - Final learned projection base
-%     P       - Final learned independent prototype data
-%     PP      - Final learned dependent prototype data
+% Output:
+%   B       - Final learned projection base
+%   P       - Final learned independent prototype data
+%   PP      - Final learned dependent prototype data
 %
 % $Revision$
 % $Date$
@@ -68,30 +67,36 @@ if strncmp(X,'-v',2),
   return;
 end
 
+fn='lppkr:';
+minargs=5;
+
+bestB=[];
+bestP=[];
+bestPP=[];
+
 slope=1;
 rateB=0.1;
 rateP=0.1;
 ratePP=0;
 
 probeI=100;
-probemode=false;
 probeunstable=0.2;
 autoprobe=false;
-decrates=false;
 
 epsilon=1e-7;
 minI=100;
 maxI=1000;
+orthoit=1;
 
 stochastic=false;
-
 orthonormal=true;
 orthogonal=false;
+euclidean=true;
+cosine=false;
 normalize=true;
-whiten=false;
 linearnorm=false;
-
-distance='euclidean';
+whiten=false;
+indepPP=false;
 
 logfile=2;
 verbose=true;
@@ -101,18 +106,18 @@ argerr=false;
 while size(varargin,2)>0,
   if ~ischar(varargin{n}) || size(varargin,2)<n+1,
     argerr=true;
+  elseif strcmp(varargin{n},'probemode'),
+    eval([varargin{n},'=varargin{n+1};']);
+    n=n+2;
   elseif strcmp(varargin{n},'slope') || ...
          strcmp(varargin{n},'rateB') || ...
          strcmp(varargin{n},'rateP')  || ...
          strcmp(varargin{n},'ratePP')  || ...
-         strcmp(varargin{n},'rates')  || ...
-         strcmp(varargin{n},'decrates')  || ...
          strcmp(varargin{n},'epsilon') || ...
          strcmp(varargin{n},'minI') || ...
          strcmp(varargin{n},'maxI') || ...
          strcmp(varargin{n},'probeI') || ...
          strcmp(varargin{n},'probe') || ...
-         strcmp(varargin{n},'probemode') || ...
          strcmp(varargin{n},'logfile') || ...
          strcmp(varargin{n},'stats') || ...
          strcmp(varargin{n},'orthoit') || ...
@@ -123,38 +128,38 @@ while size(varargin,2)>0,
     else
       n=n+2;
     end
-  elseif strcmp(varargin{n},'normalize') || ...
-         strcmp(varargin{n},'whiten') || ...
-         strcmp(varargin{n},'linearnorm') || ...
-         strcmp(varargin{n},'orthonormal') || ...
+  elseif strcmp(varargin{n},'orthonormal') || ...
          strcmp(varargin{n},'orthogonal') || ...
+         strcmp(varargin{n},'euclidean') || ...
+         strcmp(varargin{n},'cosine') || ...
+         strcmp(varargin{n},'normalize') || ...
+         strcmp(varargin{n},'linearnorm') || ...
+         strcmp(varargin{n},'whiten') || ...
+         strcmp(varargin{n},'stochastic') || ...
          strcmp(varargin{n},'autoprobe') || ...
-         strcmp(varargin{n},'verbose') || ...
-         strcmp(varargin{n},'stochastic'),
+         strcmp(varargin{n},'indepPP') || ...
+         strcmp(varargin{n},'verbose'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~islogical(varargin{n+1}),
       argerr=true;
     else
       if varargin{n+1}==true,
-        if strcmp(varargin{n},'normalize'),
-          whiten=false;    linearnorm=false;
-        elseif strcmp(varargin{n},'whiten'),
-          normalize=false; linearnorm=false;
-        elseif strcmp(varargin{n},'linearnorm'),
-          normalize=false; whiten=false;
-        elseif strcmp(varargin{n},'orthonormal'),
+        if strcmp(varargin{n},'orthonormal'),
           orthogonal=false;
         elseif strcmp(varargin{n},'orthogonal'),
           orthonormal=false;
+        elseif strcmp(varargin{n},'euclidean'),
+          cosine=false;
+        elseif strcmp(varargin{n},'cosine'),
+          euclidean=false;
+        elseif strcmp(varargin{n},'normalize'),
+          whiten=false;    linearnorm=false;
+        elseif strcmp(varargin{n},'linearnorm'),
+          normalize=false; whiten=false;
+        elseif strcmp(varargin{n},'whiten'),
+          normalize=false; linearnorm=false;
         end
       end
-      n=n+2;
-    end
-  elseif strcmp(varargin{n},'distance'),
-    eval([varargin{n},'=varargin{n+1};']);
-    if ~ischar(varargin{n+1}),
-      argerr=true;
-    else
       n=n+2;
     end
   else
@@ -170,47 +175,56 @@ DD=size(XX,1);
 R=size(B0,2);
 M=size(P0,2);
 
-minargs=5;
-if argerr,
-  fprintf(logfile,'lppkr: error: incorrect input argument %d (%s,%g)\n',n+minargs,varargin{n},varargin{n+1});
-elseif nargin-size(varargin,2)~=minargs,
-  fprintf(logfile,'lppkr: error: not enough input arguments\n');
-elseif size(B0,1)~=D,
-  fprintf(logfile,'lppkr: error: dimensionality of base and data must be the same\n');
-elseif size(P0,1)~=D,
-  fprintf(logfile,'lppkr: error: dimensionality of prototypes and data must be the same\n');
-elseif size(XX,2)~=N || size(PP0,2)~=M,
-  fprintf(logfile,'lppkr: error: the number of vectors in the dependent and independent data must be the same\n');
-elseif size(PP0,1)~=DD,
-  fprintf(logfile,'lppkr: error: the dimensionality of the dependent variables for the data and the prototypes must be the same\n');
-elseif ~(strcmp(distance,'euclidean') || strcmp(distance,'cosine')),
-  fprintf(logfile,'lppkr: error: invalid distance\n');
+if exist('probemode','var'),
+  rateB=probemode.rateB;
+  rateP=probemode.rateP;
+  ratePP=probemode.ratePP;
+  minI=probemode.minI;
+  maxI=probemode.maxI;
+  probeunstable=minI;
+  slope=probemode.slope;
+  stats=probemode.stats;
+  orthoit=probemode.orthoit;
+  orthonormal=probemode.orthonormal;
+  orthogonal=probemode.orthogonal;
+  euclidean=probemode.euclidean;
+  cosine=probemode.cosine;
+  stochastic=probemode.stochastic;
+  ind=probemode.ind;
+  ind2=probemode.ind2;
+  normalize=false;
+  verbose=false;
+  epsilon=0;
+  probemode=true;
+  xxsd=ones(DD,1);
 else
+  probemode=false;
+end
 
-  euclidean=true;
-  if strcmp(distance,'cosine'),
-    euclidean=false;
-  end
+if probemode,
+elseif argerr,
+  fprintf(logfile,'%s error: incorrect input argument %d (%s,%g)\n',fn,n+minargs,varargin{n},varargin{n+1});
+  return;
+elseif nargin-size(varargin,2)~=minargs,
+  fprintf(logfile,'%s error: not enough input arguments\n',fn);
+  return;
+elseif size(B0,1)~=D || size(P0,1)~=D,
+  fprintf(logfile,'%s error: dimensionality of base, prototypes and data must be the same\n',fn);
+  return;
+elseif size(XX,2)~=N || size(PP0,2)~=M,
+  fprintf(logfile,'%s error: the number of vectors in the dependent and independent data must be the same\n',fn);
+  return;
+elseif size(PP0,1)~=DD,
+  fprintf(logfile,'%s error: the dimensionality of the dependent variables for the data and the prototypes must be the same\n',fn);
+  return;
+end
 
-  if probemode,
-    normalize=false;
-    verbose=false;
-    epsilon=0;
-    maxI=probemode;
-    probeunstable=probeunstable*maxI;
-    xxsd=ones(DD,1);
-    tm=0;
-  else
-    xxmu=mean(XX,2);
-    xxsd=std(XX,1,2);
-    XX=(XX-xxmu(:,ones(N,1)))./xxsd(:,ones(N,1));
-    PP0=(PP0-xxmu(:,ones(M,1)))./xxsd(:,ones(M,1));
-    xxsd=xxsd.*xxsd;
-  end
+if ~verbose,
+  logfile=fopen('/dev/null');
+end
 
-  if ~verbose,
-    logfile=fopen('/dev/null');
-  end
+if ~probemode,
+  tic;
 
   if normalize || linearnorm,
     xmu=mean(X,2);
@@ -228,7 +242,7 @@ else
       X(xsd==0,:)=[];
       B0(xsd==0,:)=[];
       P0(xsd==0,:)=[];
-      fprintf(logfile,'lppkr: warning: some dimensions have a standard deviation of zero\n');
+      fprintf(logfile,'%s warning: some dimensions have a standard deviation of zero\n',fn);
     end
   elseif whiten,
     [W,V]=pca(X);
@@ -245,11 +259,11 @@ else
     B0=IW*B0;
   end
 
-  if orthonormal,
-    B0=orthonorm(B0);
-  elseif orthogonal,
-    B0=orthounit(B0);
-  end
+  xxmu=mean(XX,2);
+  xxsd=std(XX,1,2);
+  XX=(XX-xxmu(:,ones(N,1)))./xxsd(:,ones(N,1));
+  PP0=(PP0-xxmu(:,ones(M,1)))./xxsd(:,ones(M,1));
+  xxsd=xxsd.*xxsd;
 
   if stochastic,
     if exist('seed','var'),
@@ -258,96 +272,14 @@ else
     if ~exist('stats','var'),
       stats=1000;
     end
-    if ~exist('orthoit','var'),
-      orthoit=1000;
-    end
+    minI=minI*stats;
+    maxI=maxI*stats;
+    orthoit=orthoit*stats;
   else
     if ~exist('stats','var'),
       stats=1;
     end
-    if ~exist('orthoit','var'),
-      orthoit=1;
-    end
   end
-
-  if autoprobe,
-    probe=[zeros(3,1),10.^[-4:4;-4:4;-4:4]];
-  end
-  if exist('probe','var'),
-    tic;
-    bestIJE=[0,1];
-    ratesB=unique(probe(1,probe(1,:)>=0));
-    ratesP=unique(probe(2,probe(2,:)>=0));
-    ratesPP=unique(probe(3,probe(3,:)>=0));
-    nB=1;
-    while nB<=size(ratesB,2),
-      nP=1;
-      while nP<=size(ratesP,2),
-        nPP=1;
-        while nPP<=size(ratesPP,2),
-          if ~(ratesB(nB)==0 && ratesP(nP)==0 && ratesPP(nPP)==0),
-            [I,J]=lppkr(X,XX,B0,P0,PP0,'probemode',probeI,'rates',[ratesB(nB) ratesP(nP) ratesPP(nPP)],'slope',slope,'orthoit',orthoit,'orthonormal',orthonormal,'orthogonal',orthogonal,'distance',distance);
-            mark='';
-            if I>bestIJE(1) || (I==bestIJE(1) && J<bestIJE(2)),
-              bestIJE=[I,J];
-              rateB=ratesB(nB);
-              rateP=ratesP(nP);
-              ratePP=ratesPP(nPP);
-              mark=' ++';
-            end
-            if I<probeunstable*probeI,
-              if nPP==1,
-                if nP==1,
-                  nB=size(ratesB,2)+1;
-                end
-                nP=size(ratesP,2)+1;
-              end
-              break;
-            end
-            fprintf(logfile,'lppkr_probeRates: rates={%.2E %.2E %.2E} => impI=%.2f J=%.4f%s\n',ratesB(nB),ratesP(nP),ratesPP(nPP),I/probeI,J,mark);
-          end
-          nPP=nPP+1;
-        end
-        nP=nP+1;
-      end
-      nB=nB+1;
-    end
-    fprintf(logfile,'lppkr_probeRates: total time (s): %f\n',toc);
-    fprintf(logfile,'lppkr_probeRates: selected rates={%.2E %.2E %.2E} impI=%.2f J=%.4f\n',rateB,rateP,ratePP,bestIJE(1)/probeI,bestIJE(2));
-  end
-
-  if exist('rates','var'),
-    if max(size(rates))==1,
-      rateB=rates;
-      rateP=rates;
-      ratePP=rates;
-    else
-      rateB=rates(1);
-      rateP=rates(2);
-      ratePP=rates(3);
-    end
-  end
-  if euclidean,
-    rateB=2*rateB;
-    rateP=2*rateP;
-    ratePP=2*ratePP;
-  end
-  slope=slope/DD;
-  rateB=2*rateB*slope/N;
-  rateP=2*rateP*slope/N;
-  ratePP=2*ratePP*slope/N;
-  NDD=N*DD;
-
-  B=B0;
-  P=P0;
-  PP=PP0;
-  bestB=B0;
-  bestP=P0;
-  bestPP=PP0;
-  bestIJE=[0 1 Inf -1];
-
-  J0=1;
-  I=0;
 
   ind=1:M;
   ind=ind(ones(N,1),:);
@@ -357,176 +289,246 @@ else
   ind2=ind2(ones(N,1),:);
   ind2=ind2(:);
 
-  mindist=100*sqrt(1/realmax); %%% g(d)=1/d
+  fprintf(logfile,'%s total preprocessing time (s): %f\n',fn,toc);
+end
 
-  fprintf(logfile,'lppkr: Dx=%d Dxx=%d R=%d Nx=%d\n',D,DD,R,N);
-  fprintf(logfile,'lppkr: output: iteration | J | delta(J) | rmse\n');
-
-  if ~probemode,
-    tic;
-  end
-
-  if ~stochastic,
-
-    while 1,
-
-      rX=B'*X;
-      rP=B'*P;
-
-      if euclidean,
-
-        %dist=reshape(exp(-sum(power(repmat(rX,1,M)-rP(:,ind),2),1)),N,M); %%% g(d)=exp(-d)
-        dist=sum(power(repmat(rX,1,M)-rP(:,ind),2),1); dist(dist<mindist)=mindist; dist=reshape(1./dist,N,M); %%% g(d)=1/d
-
-      else % cosine
-
-        rpsd=sqrt(sum(rP.*rP,1));
-        rP=rP./rpsd(ones(R,1),:);
-        rxsd=sqrt(sum(rX.*rX,1));
-        rX=rX./rxsd(ones(R,1),:);
-        %dist=reshape(exp(-(1-sum(repmat(rX,1,M).*rP(:,ind),1))),N,M); %%% g(d)=exp(-d)
-        dist=1-sum(repmat(rX,1,M).*rP(:,ind),1); dist(dist<mindist)=mindist; dist=reshape(1./dist,N,M); %%% g(d)=1/d
-
-      end
-
-      S=sum(dist,2);
-      mXX=(reshape(sum(repmat(dist,DD,1).*PP(ind2,:),2),N,DD)./S(:,ones(DD,1)))';
-      dist=dist.*dist; %%% g(d)=1/d
-
-      dXX=mXX-XX;
-      tanhXX=tanh(slope*sum(dXX.*dXX,1))';
-      J=sum(tanhXX)/N;
-      E=sqrt(sum(sum(dXX.*dXX,2).*xxsd)/NDD);
-
-      mark='';
-      if J<=bestIJE(2),
-        bestB=B;
-        bestP=P;
-        bestPP=PP;
-        bestIJE=[I J E bestIJE(4)+1];
-        bad=0;
-        pbad=false;
-        mark=' *';
-      elseif decrates,
-        if bad>=decrates(2),
-          if mod(I,stats)==0,
-            fprintf(logfile,'%d\t%.9f\t%.9f\t%f -\n',I,J,J-J0,E);
+if autoprobe,
+  probe=[zeros(3,1),10.^[-4:4;-4:4;-4:4]];
+end
+if exist('probe','var'),
+  tic;
+  probecfg.minI=round(probeunstable*probeI);
+  probecfg.maxI=probeI;
+  probecfg.slope=slope;
+  probecfg.stats=stats;
+  probecfg.orthoit=orthoit;
+  probecfg.orthonormal=orthonormal;
+  probecfg.orthogonal=orthogonal;
+  probecfg.euclidean=euclidean;
+  probecfg.cosine=cosine;
+  probecfg.stochastic=stochastic;
+  probecfg.ind=ind;
+  probecfg.ind2=ind2;
+  bestIJE=[0,1];
+  ratesB=unique(probe(1,probe(1,:)>=0));
+  ratesP=unique(probe(2,probe(2,:)>=0));
+  ratesPP=unique(probe(3,probe(3,:)>=0));
+  nB=1;
+  while nB<=size(ratesB,2),
+    nP=1;
+    while nP<=size(ratesP,2),
+      nPP=1;
+      while nPP<=size(ratesPP,2),
+        if ~(ratesB(nB)==0 && ratesP(nP)==0 && ratesPP(nPP)==0),
+          probecfg.rateB=ratesB(nB);
+          probecfg.rateP=ratesP(nP);
+          probecfg.ratePP=ratesPP(nPP);
+          [I,J]=lppkr(X,XX,B0,P0,PP0,'probemode',probecfg);
+          mark='';
+          if I>bestIJE(1) || (I==bestIJE(1) && J<bestIJE(2)),
+            bestIJE=[I,J];
+            rateB=ratesB(nB);
+            rateP=ratesP(nP);
+            ratePP=ratesPP(nPP);
+            mark=' +';
           end
-          rateB=decrates(1)*rateB;
-          rateP=decrates(1)*rateP;
-          ratePP=decrates(1)*ratePP;
-          B=bestB;
-          P=bestP;
-          PP=bestPP;
-          J0=J;
-          I=I+1;
-          bad=0;
-          pbad=false;
-          continue;
+          if I<probeunstable*probeI,
+            if nPP==1,
+              if nP==1,
+                nB=size(ratesB,2)+1;
+              end
+              nP=size(ratesP,2)+1;
+            end
+            break;
+          end
+          fprintf(logfile,'%s rates={%.2E %.2E %.2E} => impI=%.2f J=%.4f%s\n',fn,ratesB(nB),ratesP(nP),ratesPP(nPP),I/probeI,J,mark);
         end
-        if pbad,
-          bad=bad+1;
-        else
-          bad=1;
-        end
-        pbad=true;
+        nPP=nPP+1;
       end
+      nP=nP+1;
+    end
+    nB=nB+1;
+  end
+  fprintf(logfile,'%s total probe time (s): %f\n',fn,toc);
+  fprintf(logfile,'%s selected rates={%.2E %.2E %.2E} impI=%.2f J=%.4f\n',fn,rateB,rateP,ratePP,bestIJE(1)/probeI,bestIJE(2));
+end
 
-      if probemode,
-        if bestIJE(4)+(maxI-I)<probeunstable,
-          break;
-        end
-      end
+if euclidean,
+  rateB=2*rateB;
+  rateP=2*rateP;
+  ratePP=2*ratePP;
+end
+slope=slope/DD;
+rateB=2*rateB*slope/N;
+rateP=2*rateP*slope/N;
+ratePP=2*ratePP*slope/N;
+NDD=N*DD;
 
-      if mod(I,stats)==0,
-        fprintf(logfile,'%d\t%.9f\t%.9f\t%f%s\n',I,J,J-J0,E,mark);
-      end
+if orthonormal,
+  B0=orthonorm(B0);
+elseif orthogonal,
+  B0=orthounit(B0);
+end
 
-      if I>=maxI,
-        fprintf(logfile,'lppkr: reached maximum number of iterations\n');
+Bi=B0;
+Pi=P0;
+PPi=PP0;
+bestB=B0;
+bestP=P0;
+bestPP=PP0;
+bestIJE=[0 1 Inf -1];
+
+J0=1;
+I=0;
+
+mindist=100*sqrt(1/realmax);
+
+fprintf(logfile,'%s Dx=%d Dxx=%d R=%d Nx=%d\n',fn,D,DD,R,N);
+fprintf(logfile,'%s output: iteration | J | delta(J) | E\n',fn);
+
+if ~probemode,
+  tic;
+end
+
+if ~stochastic,
+
+  while 1,
+
+    rX=Bi'*X;
+    rP=Bi'*Pi;
+
+    if euclidean,
+
+      dist=sum(power(repmat(rX,1,M)-rP(:,ind),2),1); dist(dist<mindist)=mindist; dist=reshape(1./dist,N,M);
+
+    elseif cosine,
+
+      rpsd=sqrt(sum(rP.*rP,1));
+      rP=rP./rpsd(ones(R,1),:);
+      rxsd=sqrt(sum(rX.*rX,1));
+      rX=rX./rxsd(ones(R,1),:);
+      dist=1-sum(repmat(rX,1,M).*rP(:,ind),1); dist(dist<mindist)=mindist; dist=reshape(1./dist,N,M);
+
+    end
+
+    S=sum(dist,2);
+    mXX=(reshape(sum(repmat(dist,DD,1).*PPi(ind2,:),2),N,DD)./S(:,ones(DD,1)))';
+    dist=dist.*dist;
+
+    dXX=mXX-XX;
+    tanhXX=tanh(slope*sum(dXX.*dXX,1))';
+    J=sum(tanhXX)/N;
+    E=sqrt(sum(sum(dXX.*dXX,2).*xxsd)/NDD);
+
+    mark='';
+    if J<=bestIJE(2),
+      bestB=Bi;
+      bestP=Pi;
+      bestPP=PPi;
+      bestIJE=[I J E bestIJE(4)+1];
+      mark=' *';
+    end
+
+    if probemode,
+      if bestIJE(4)+(maxI-I)<probeunstable,
         break;
       end
+    end
 
-      if I>=minI,
-        if abs(J0-J)<epsilon,
-          fprintf(logfile,'lppkr: index has stabilized\n');
-          break;
-        end
+    if mod(I,stats)==0,
+      fprintf(logfile,'%d\t%.9f\t%.9f\t%f%s\n',I,J,J-J0,E,mark);
+    end
+
+    if I>=maxI,
+      fprintf(logfile,'%s reached maximum number of iterations\n',fn);
+      break;
+    end
+
+    if I>=minI,
+      if abs(J0-J)<epsilon,
+        fprintf(logfile,'%s index has stabilized\n',fn);
+        break;
       end
+    end
 
-      J0=J;
-      I=I+1;
+    J0=J;
+    I=I+1;
 
-      fact=repmat((1-tanhXX.*tanhXX)./S,M,1).*dist(:);
+    fact=repmat((1-tanhXX.*tanhXX)./S,M,1).*dist(:);
+    if indepPP,
+      fPP=permute(sum(reshape(fact(:,ones(DD,1)).*repmat(dXX,1,M)',N,M,DD)),[3 2 1]);
+    else
       fPP=sum(reshape(fact.*sum(repmat(dXX,1,M),1)',N,M),1);
-      fact=fact.*sum(repmat(dXX,1,M).*(repmat(mXX,1,M)-PP(:,ind)),1)';
+    end
+    fact=fact.*sum(repmat(dXX,1,M).*(repmat(mXX,1,M)-PPi(:,ind)),1)';
 
-      if euclidean,
+    if euclidean,
 
-        fact=reshape(fact(:,ones(R,1))'.*(repmat(rX,1,M)-rP(:,ind)),[R N M]);
-        fP=-permute(sum(fact,2),[1 3 2]);
-        fX=sum(fact,3);
+      fact=reshape(fact(:,ones(R,1))'.*(repmat(rX,1,M)-rP(:,ind)),[R N M]);
+      fP=-permute(sum(fact,2),[1 3 2]);
+      fX=sum(fact,3);
 
-      else % cosine
+    elseif cosine,
 
-        fP=-permute(sum(reshape(fact(:,ones(R,1))'.*repmat(rX,1,M),[R N M]),2),[1 3 2]);
-        fX=-sum(reshape(fact(:,ones(R,1))'.*rP(:,ind),[R N M]),3);
+      fP=-permute(sum(reshape(fact(:,ones(R,1))'.*repmat(rX,1,M),[R N M]),2),[1 3 2]);
+      fX=-sum(reshape(fact(:,ones(R,1))'.*rP(:,ind),[R N M]),3);
 
+    end
+
+    P0=Bi*fP;
+    B0=X*fX'+Pi*fP';
+
+    Bi=Bi-rateB*B0;
+    Pi=Pi-rateP*P0;
+    if indepPP,
+      PPi=PPi-ratePP*fPP;
+    else
+      PPi=PPi-ratePP*fPP(ones(DD,1),:);
+    end
+
+    if mod(I,orthoit)==0,
+      if orthonormal,
+        Bi=orthonorm(Bi);
+      elseif orthogonal,
+        Bi=orthounit(Bi);
       end
-
-      P0=B*fP;
-      B0=X*fX'+P*fP';
-
-      B=B-rateB*B0;
-      P=P-rateP*P0;
-      PP=PP-ratePP*fPP(ones(DD,1),:);
-
-      if mod(I,orthoit)==0,
-        if orthonormal,
-          B=orthonorm(B);
-        elseif orthogonal,
-          B=orthounit(B);
-        end
-      end
-
     end
 
   end
 
-  if ~probemode,
-    tm=toc;
-  end
-  fprintf(logfile,'lppkr: average iteration time (ms): %f\n',1000*tm/(I+0.5));
-  fprintf(logfile,'lppkr: total time (s): %f\n',tm);
-  fprintf(logfile,'lppkr: amount of improvement iterations: %f\n',bestIJE(4)/max(I,1));
-  fprintf(logfile,'lppkr: best iteration: I=%d, J=%f, RMSE=%f\n',bestIJE(1),bestIJE(2),bestIJE(3));
+end
 
-  if ~verbose,
-    fclose(logfile);
-  end
+if ~probemode,
+  tm=toc;
+  fprintf(logfile,'%s average iteration time (ms): %f\n',fn,1000*tm/(I+0.5));
+  fprintf(logfile,'%s total iteration time (s): %f\n',fn,tm);
+  fprintf(logfile,'%s amount of improvement iterations: %f\n',fn,bestIJE(4)/max(I,1));
+  fprintf(logfile,'%s best iteration: I=%d J=%f E=%f\n',fn,bestIJE(1),bestIJE(2),bestIJE(3));
+end
 
-  if probemode,
-    bestB=bestIJE(4);
-    bestP=bestIJE(2);
-    bestPP=bestIJE(3);
-    return;
-  end
+if ~verbose,
+  fclose(logfile);
+end
 
-  bestPP=bestPP.*sqrt(xxsd(:,ones(M,1)))+xxmu(:,ones(M,1));
-  if normalize || linearnorm,
-    bestP=bestP.*xsd(xsd~=0,ones(M,1))+xmu(xsd~=0,ones(M,1));
-    bestB=bestB./xsd(xsd~=0,ones(R,1));
-    if sum(xsd==0)>0,
-      P=bestP;
-      B=bestB;
-      bestP=zeros(D,M);
-      bestP(xsd~=0,:)=P;
-      bestB=zeros(D,R);
-      bestB(xsd~=0,:)=B;
-    end
-  elseif whiten,
-    bestP=IW'*bestP+xmu(:,ones(M,1));
-    bestB=W*bestB;
-  end
+if probemode,
+  bestB=bestIJE(4);
+  bestP=bestIJE(2);
+  return;
+end
 
+bestPP=bestPP.*sqrt(xxsd(:,ones(M,1)))+xxmu(:,ones(M,1));
+if normalize || linearnorm,
+  bestP=bestP.*xsd(xsd~=0,ones(M,1))+xmu(xsd~=0,ones(M,1));
+  bestB=bestB./xsd(xsd~=0,ones(R,1));
+  if sum(xsd==0)>0,
+    P=bestP;
+    B=bestB;
+    bestP=zeros(D,M);
+    bestP(xsd~=0,:)=P;
+    bestB=zeros(D,R);
+    bestB(xsd~=0,:)=B;
+  end
+elseif whiten,
+  bestP=IW'*bestP+xmu(:,ones(M,1));
+  bestB=W*bestB;
 end
