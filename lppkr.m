@@ -192,6 +192,10 @@ if exist('probemode','var'),
   stochastic=probemode.stochastic;
   ind=probemode.ind;
   ind2=probemode.ind2;
+  xsparse=probemode.xsparse;
+  if xsparse,
+    xmuosd=probemode.xmuosd;
+  end
   normalize=false;
   verbose=false;
   epsilon=0;
@@ -226,6 +230,11 @@ end
 if ~probemode,
   tic;
 
+  xsparse=false;
+  if issparse(X),
+    xsparse=true;
+  end
+
   if normalize || linearnorm,
     xmu=mean(X,2);
     xsd=std(X,1,2);
@@ -235,13 +244,24 @@ if ~probemode,
     if linearnorm,
       xsd=max(xsd)*ones(size(xsd));
     end
-    X=(X-xmu(:,ones(N,1)))./xsd(:,ones(N,1));
-    P0=(P0-xmu(:,ones(M,1)))./xsd(:,ones(M,1));
+    if xsparse,
+      xmu=full(xmu);
+      xsd=full(xsd);
+      xmuosd=xmu./xsd;
+      X=X./xsd(:,ones(N,1));
+      P0=P0./xsd(:,ones(M,1));
+    else
+      X=(X-xmu(:,ones(N,1)))./xsd(:,ones(N,1));
+      P0=(P0-xmu(:,ones(M,1)))./xsd(:,ones(M,1));
+    end
     B0=B0.*xsd(:,ones(R,1));
     if sum(xsd==0)>0,
       X(xsd==0,:)=[];
       B0(xsd==0,:)=[];
       P0(xsd==0,:)=[];
+      if xsparse,
+        xmuosd(xsd==0)=[];
+      end
       fprintf(logfile,'%s warning: some dimensions have a standard deviation of zero\n',fn);
     end
   elseif whiten,
@@ -309,6 +329,10 @@ if exist('probe','var'),
   probecfg.stochastic=stochastic;
   probecfg.ind=ind;
   probecfg.ind2=ind2;
+  probecfg.xsparse=xsparse;
+  if xsparse,
+    probecfg.xmuosd=xmuosd;
+  end
   bestIJE=[0,1];
   ratesB=unique(probe(1,probe(1,:)>=0));
   ratesP=unique(probe(2,probe(2,:)>=0));
@@ -477,6 +501,9 @@ if ~stochastic,
 
     P0=Bi*fP;
     B0=X*fX'+Pi*fP';
+    if xsparse,
+      B0=B0-xmuosd*sum(fX,2)';
+    end
 
     Bi=Bi-rateB*B0;
     Pi=Pi-rateP*P0;

@@ -13,8 +13,8 @@ function [bestB, bestP] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
 %
 % Input (optional):
 %   'slope',SLOPE              - Sigmoid slope (defaul=10)
-%   'rateB',RATEB              - Projection base learning rate (default=0.5)
-%   'rateP',RATEP              - Prototypes learning rate (default=100)
+%   'rateB',RATEB              - Projection base learning rate (default=0.1)
+%   'rateP',RATEP              - Prototypes learning rate (default=0.1)
 %   'probe',PROBE              - Probe learning rates (default=false)
 %   'probeI',PROBEI            - Iterations for probing (default=100)
 %   'autoprobe',(true|false)   - Automatic probing (default=false)
@@ -81,8 +81,8 @@ bestB=[];
 bestP=[];
 
 slope=10;
-rateB=0.5;
-rateP=100;
+rateB=0.1;
+rateP=0.1;
 
 probeI=100;
 probeunstable=0.2;
@@ -196,6 +196,10 @@ if exist('probemode','var'),
   cfact=probemode.cfact;
   ind=probemode.ind;
   sel=probemode.sel;
+  xsparse=probemode.xsparse;
+  if xsparse,
+    xmuosd=probemode.xmuosd;
+  end
   if stochastic,
     cumprior=probemode.cumprior;
     nc=probemode.nc;
@@ -239,6 +243,11 @@ end
 if ~probemode,
   tic;
 
+  xsparse=false;
+  if issparse(X),
+    xsparse=true;
+  end
+
   if normalize || linearnorm,
     xmu=mean(X,2);
     xsd=std(X,1,2);
@@ -248,13 +257,24 @@ if ~probemode,
     if linearnorm,
       xsd=max(xsd)*ones(size(xsd));
     end
-    X=(X-xmu(:,ones(N,1)))./xsd(:,ones(N,1));
-    P0=(P0-xmu(:,ones(M,1)))./xsd(:,ones(M,1));
+    if xsparse,
+      xmu=full(xmu);
+      xsd=full(xsd);
+      xmuosd=xmu./xsd;
+      X=X./xsd(:,ones(N,1));
+      P0=P0./xsd(:,ones(M,1));
+    else
+      X=(X-xmu(:,ones(N,1)))./xsd(:,ones(N,1));
+      P0=(P0-xmu(:,ones(M,1)))./xsd(:,ones(M,1));
+    end
     B0=B0.*xsd(:,ones(R,1));
     if sum(xsd==0)>0,
       X(xsd==0,:)=[];
       B0(xsd==0,:)=[];
       P0(xsd==0,:)=[];
+      if xsparse,
+        xmuosd(xsd==0)=[];
+      end
       fprintf(logfile,'%s warning: some dimensions have a standard deviation of zero\n',fn);
     end
   elseif whiten,
@@ -283,6 +303,7 @@ if ~probemode,
     Plabels=nPlabels;
     Xlabels=nXlabels;
   end
+  clear clab nPlabels nXlabels;
 
   if ~exist('prior','var'),
     prior=ones(C,1);
@@ -350,6 +371,10 @@ if exist('probe','var'),
   probecfg.cfact=cfact;
   probecfg.ind=ind;
   probecfg.sel=sel;
+  probecfg.xsparse=xsparse;
+  if xsparse,
+    probecfg.xmuosd=xmuosd;
+  end
   if stochastic,
     probecfg.cumprior=cumprior;
     probecfg.nc=nc;
@@ -511,6 +536,9 @@ if ~stochastic,
 
     P0=Bi*fP;
     B0=X*fX'+Pi*fP';
+    if xsparse,
+      B0=B0-xmuosd*sum(fX,2)';
+    end
 
     Bi=Bi-rateB*B0;
     Pi=Pi-rateP*P0;
