@@ -231,9 +231,6 @@ if ~probemode,
   tic;
 
   xsparse=false;
-  if issparse(X),
-    xsparse=true;
-  end
 
   if normalize || linearnorm,
     xmu=mean(X,2);
@@ -244,7 +241,8 @@ if ~probemode,
     if linearnorm,
       xsd=max(xsd)*ones(size(xsd));
     end
-    if xsparse,
+    if issparse(X),
+      xsparse=true;
       xmu=full(xmu);
       xsd=full(xsd);
       xmuosd=xmu./xsd;
