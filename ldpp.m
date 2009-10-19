@@ -248,7 +248,7 @@ if ~probemode,
     if linearnorm,
       xsd=max(xsd)*ones(size(xsd));
     end
-    if issparse(X),
+    if issparse(X) && ~cosine,
       xmu=full(xmu);
       xsd=full(xsd);
       X=X./xsd(:,ones(N,1));
@@ -683,7 +683,7 @@ if probemode,
 end
 
 if normalize || linearnorm,
-  if issparse(X),
+  if issparse(X) && ~cosine,
     bestP=bestP.*xsd(xsd~=0,ones(M,1));
   else
     bestP=bestP.*xsd(xsd~=0,ones(M,1))+xmu(xsd~=0,ones(M,1));
