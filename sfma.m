@@ -40,8 +40,8 @@ function [bestW, bestU, bestV] = sfma(POS, NEG, W0, U0, V0, varargin)
 %   Under the ROC Curve." IbPria 2009.
 %
 %
-% $Revision: 70 $
-% $Date: 2009-10-19 09:34:45 +0200 (Mon, 19 Oct 2009) $
+% $Revision$
+% $Date$
 %
 
 %
@@ -62,7 +62,7 @@ function [bestW, bestU, bestV] = sfma(POS, NEG, W0, U0, V0, varargin)
 %
 
 if strncmp(POS,'-v',2),
-  unix('echo "$Revision: 70 $* $Date: 2009-10-19 09:34:45 +0200 (Mon, 19 Oct 2009) $*" | sed "s/^:/sfma: revision/g; s/ : /[/g; s/ (.*)/]/g;"');
+  unix('echo "$Revision$* $Date$*" | sed "s/^:/sfma: revision/g; s/ : /[/g; s/ (.*)/]/g;"');
   return;
 end
 
