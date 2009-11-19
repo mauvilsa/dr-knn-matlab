@@ -23,8 +23,12 @@ function [bestW, bestU, bestV] = sfma(POS, NEG, W0, U0, V0, varargin)
 %   'approx',AMOUNT            - Use AUC approximation (default=false)
 %   'seed',SEED                - Random seed (default=system)
 %   'stochastic',(true|false)  - Stochastic gradient descend (default=true)
-%   'stochsamples',SAMP        - Samples per stochastic iteration (default=10)
-%   'stats',STAT               - Statistics every STAT (default={b:1,s:100})
+%   'stochsamples',SAMP        - Samples per stochastic iteration (default=1)
+%   'stochcheck',SIT           - Check every SIT stochastic iterations (default=100)
+%   'adaptrates',(true|false)  - Adapt learning rates (default=false)
+%   'adaptrate',RATE           - Adaptation rate (default=false)
+%   'adaptdecay',DECAY         - Adaptation decay (default=false)
+%   'stats',STAT               - Statistics every STAT (default=1)
 %   'logfile',FID              - Output log file (default=stderr)
 %   'verbose',(true|false)     - Verbose (default=true)
 %
@@ -88,7 +92,9 @@ maxI=1000;
 
 approx=false;
 stochastic=false;
-stochsamples=10;
+stochsamples=1;
+stochcheck=100;
+stochnew=false;
 
 logfile=2;
 verbose=true;
@@ -111,6 +117,7 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'approx') || ...
          strcmp(varargin{n},'seed') || ...
          strcmp(varargin{n},'stochsamples') || ...
+         strcmp(varargin{n},'stochcheck') || ...
          strcmp(varargin{n},'stats') || ...
          strcmp(varargin{n},'logfile'),
     eval([varargin{n},'=varargin{n+1};']);
@@ -120,6 +127,7 @@ while size(varargin,2)>0,
       n=n+2;
     end
   elseif strcmp(varargin{n},'stochastic') || ...
+         strcmp(varargin{n},'stochnew') || ...
          strcmp(varargin{n},'adaptrates') || ...
          strcmp(varargin{n},'verbose'),
     eval([varargin{n},'=varargin{n+1};']);
@@ -228,15 +236,20 @@ if stochastic,
   if exist('seed','var'),
     rand('state',seed);
   end
-  if ~exist('stats','var'),
-    stats=100;
-  end
+%  if ~exist('stats','var'),
+%    stats=100;
+%  end
+  minI=minI*stochcheck;
+  maxI=maxI*stochcheck;
   onesS=ones(stochsamples,1);
   overS=1/stochsamples;
-else
-  if ~exist('stats','var'),
-    stats=1;
-  end
+%else
+%  if ~exist('stats','var'),
+%    stats=1;
+%  end
+end
+if ~exist('stats','var'),
+  stats=1;
 end
 
 W0(W0<0)=0;
@@ -248,6 +261,7 @@ Vi=V0;
 bestWUV=[W0;U0;V0];
 bestIJA=[0 0 0 -1];
 
+J00=0;
 J0=0;
 I=0;
 
@@ -269,11 +283,17 @@ end
 
 fprintf(logfile,'%s D=%d P=%d N=%d\n',fn,D,P,N);
 %fprintf(logfile,'%s output: iteration | J | delta(J) | AUC\n',fn);
-fprintf(logfile,'%s output: I | 100^J | delta(100^J) | 100^AUC, S=%d\n',fn,stats);
+%if ~stochastic,
+%  fprintf(logfile,'%s output: I | 100^J | delta(100^J) | 100^AUC, S=%d\n',fn,stats);
+%else
+%  fprintf(logfile,'%s output: I | 100^J | delta(100^J) | 100^AUC, S=%d\n',fn,stochcheck);
+%end
 
 tic;
 
 if ~stochastic,
+
+  fprintf(logfile,'%s output: I | 100^J | delta(100^J) | 100^AUC, S=%d\n',fn,stats);
 
   while 1,
 
@@ -331,7 +351,7 @@ if ~stochastic,
     J=100^(overPN*J);
 
     if isnan(J),
-      fprintf(logfile,'%s reached unsable state\n',fn);
+      fprintf(logfile,'%s stopped iterating, reached unstable state\n',fn);
       break;
     end
 
@@ -343,18 +363,19 @@ if ~stochastic,
     end
 
     if mod(I,stats)==0,
-      fprintf(logfile,'%dS\t%.6f\t%.6f\t%.6f%s\n',I/stats,J,J-J0,A,mark);
+      fprintf(logfile,'%dS\t%.6f\t%.6f\t%.6f%s\n',I/stats,J,J-J00,A,mark);
       %fprintf(logfile,'%d\t%.8f\t%.8f\t%.8f%s\n',I,J,J-J0,A,mark);
+      J00=J;
     end
 
     if I>=maxI,
-      fprintf(logfile,'%s reached maximum number of iterations\n',fn);
+      fprintf(logfile,'%s stopped iterating, reached maximum number of iterations\n',fn);
       break;
     end
 
     if I>=minI,
       if abs(J-J0)<epsilon,
-        fprintf(logfile,'%s index has stabilized\n',fn);
+        fprintf(logfile,'%s stopped iterating, index has stabilized\n',fn);
         break;
       end
     end
@@ -441,9 +462,13 @@ if ~stochastic,
 
 else % stochastic
 
+  if ~stochnew,
+
+  fprintf(logfile,'%s output: I | 100^J | delta(100^J) | 100^AUC, S=%d\n',fn,stochcheck);
+
   while 1,
 
-    if mod(I,stats)==0,
+    if mod(I,stochcheck)==0,
 
       nPOS=1./(1+exp(Ui(onesP,:).*(Vi(onesP,:)-POS)));
       fPOS=nPOS*Wi';
@@ -456,16 +481,18 @@ else % stochastic
       fPOS=exp(-slope*fPOS);
       fNEG=exp(slope*fNEG);
 
-      J=0;
-      for p=1:P,
-        fact=fNEG.*fPOS(p);
-        J=J+sum(1./(1+fact));
-      end
-      %J=overPN*J;
-      J=100^(overPN*J);
+      J=A;
+      %J=0;
+      %for p=1:P,
+      %  %fact=fNEG.*fPOS(p);
+      %  %J=J+sum(1./(1+fact));
+      %  J=J+sum(1./(1+fPOS(p).*fNEG));
+      %end
+      %%J=overPN*J;
+      %J=100^(overPN*J);
 
       if isnan(J),
-        fprintf(logfile,'%s reached unsable state\n',fn);
+        fprintf(logfile,'%s stopped iterating, reached unstable state\n',fn);
         break;
       end
 
@@ -476,17 +503,20 @@ else % stochastic
         mark=' *';
       end
 
-      fprintf(logfile,'%dS\t%.6f\t%.6f\t%.6f%s\n',I/stats,J,J-J0,A,mark);
-      %fprintf(logfile,'%d\t%.8f\t%.8f\t%.8f%s\n',I,J,J-J0,A,mark);
+      if mod(I,stats*stochcheck)==0,
+        fprintf(logfile,'%dS\t%.6f\t%.6f\t%.6f%s\n',I/stochcheck,J,J-J00,A,mark);
+        %fprintf(logfile,'%d\t%.8f\t%.8f\t%.8f%s\n',I,J,J-J0,A,mark);
+        J00=J;
+      end
 
       if I>=maxI,
-        fprintf(logfile,'%s reached maximum number of iterations\n',fn);
+        fprintf(logfile,'%s stopped iterating, reached maximum number of iterations\n',fn);
         break;
       end
 
       if I>=minI,
         if abs(J-J0)<epsilon,
-          fprintf(logfile,'%s index has stabilized\n',fn);
+          fprintf(logfile,'%s stopped iterating, index has stabilized\n',fn);
           break;
         end
       end
@@ -502,39 +532,12 @@ else % stochastic
     POSmV=sPOS-Vi(onesS,:);
     NEGmV=sNEG-Vi(onesS,:);
 
-    %if approx,
-
-      %nPOS=1./(1+exp(Ui(ones(origP,1),:).*(Vi(ones(origP,1),:)-origPOS)));
-      %fPOS=nPOS*Wi';
-      %nNEG=1./(1+exp(Ui(ones(origN,1),:).*(Vi(ones(origN,1),:)-origNEG)));
-      %fNEG=nNEG*Wi';
-
-      %[fPOS,indPOS]=sort(fPOS);
-      %[fNEG,indNEG]=sort(fNEG);
-
-      %[A,ind]=sort([fNEG;fPOS]);
-      %A=(sum(find(label(ind)))-0.5*origP*(origP+1))./(origP*origN);
-
-      %fPOS=fPOS(1:P);
-      %iPOS=indPOS(1:P);
-      %nPOS=nPOS(iPOS,:);
-      %POS=origPOS(iPOS,:);
-
-      %fNEG=fNEG(origN-N+1:origN);
-      %iNEG=indNEG(origN-N+1:origN);
-      %nNEG=nNEG(iNEG,:);
-      %NEG=origNEG(iNEG,:);
-
-    %else
-
-      expPOS=exp(-Ui(onesS,:).*POSmV);
-      nPOS=1./(1+expPOS);
-      fPOS=nPOS*Wi';
-      expNEG=exp(-Ui(onesS,:).*NEGmV);
-      nNEG=1./(1+expNEG);
-      fNEG=nNEG*Wi';
-
-    %end
+    expPOS=exp(-Ui(onesS,:).*POSmV);
+    nPOS=1./(1+expPOS);
+    fPOS=nPOS*Wi';
+    expNEG=exp(-Ui(onesS,:).*NEGmV);
+    nNEG=1./(1+expNEG);
+    fNEG=nNEG*Wi';
 
     fPOS=exp(-slope*fPOS);
     fNEG=exp(slope*fNEG);
@@ -598,14 +601,197 @@ else % stochastic
 
   end
 
-  bestIJA(4)=bestIJA(4)*max(I,1)/(max(I,1)/stats);
+  bestIJA(4)=bestIJA(4)*max(I,1)/(max(I,1)/stochcheck);
+
+  else
+
+  stochindexsamp=100;
+  overSS=1/stochindexsamp;
+  curr=stochindexsamp;
+  js=zeros(stochindexsamp,1);
+  as=zeros(stochindexsamp,1);
+  sumJ=0;
+  sumA=0;
+  stats=stats*stochcheck;
+  exactfinalstats=true;
+
+  fprintf(logfile,'%s output: I | 100^J | delta(100^J) | 100^AUC, S=%d\n',fn,stats);
+
+  while 1,
+
+    %if mod(I,stats)==0,
+    %  nPOS=1./(1+exp(bestWUV(2*onesP,:).*(bestWUV(3*onesP,:)-POS)));
+    %  fPOS=nPOS*bestWUV(1,:)';
+    %  nNEG=1./(1+exp(bestWUV(2*onesN,:).*(bestWUV(3*onesN,:)-NEG)));
+    %  fNEG=nNEG*bestWUV(1,:)';
+
+    %  [A,ind]=sort([fNEG;fPOS]);
+    %  A=100^(overPN*(sum(find(label(ind)))-adjsA));
+
+    %  fPOS=exp(-slope*fPOS);
+    %  fNEG=exp(slope*fNEG);
+
+    %  J=0;
+    %  for p=1:P,
+    %    J=J+sum(1./(1+fPOS(p).*fNEG));
+    %  end
+    %  J=100^(overPN*J);
+
+    %  fprintf(logfile,'%dS\t%.6f\t%.6f\t%.6f%s\n',I/stochcheck,J,J,A,' ++');
+    %end
+
+    sPOS=POS(1+round((P-1)*rand(stochsamples,1)),:);
+    sNEG=NEG(1+round((N-1)*rand(stochsamples,1)),:);
+    POSmV=sPOS-Vi(onesS,:);
+    NEGmV=sNEG-Vi(onesS,:);
+
+    expPOS=exp(-Ui(onesS,:).*POSmV);
+    nPOS=1./(1+expPOS);
+    fPOS=nPOS*Wi';
+    expNEG=exp(-Ui(onesS,:).*NEGmV);
+    nNEG=1./(1+expNEG);
+    fNEG=nNEG*Wi';
+
+    prev=mod(I+1,stochindexsamp)+1;
+    curr=mod(I,stochindexsamp)+1;
+
+    as(curr)=overS*(sum(fPOS>fNEG)+0.5*sum(fPOS==fNEG));
+    sumA=sumA+as(curr)-as(prev);
+    A=100^(overSS*sumA);
+
+    fPOS=exp(-slope*fPOS);
+    fNEG=exp(slope*fNEG);
+    fact=fNEG.*fPOS;
+
+    js(curr)=overS*sum(1./(1+fact));
+    sumJ=sumJ+js(curr)-js(prev);
+    J=100^(overSS*sumJ);
+
+    if J>=bestIJA(2),
+      bestWUV=[Wi;Ui;Vi];
+      bestIJA=[I J A bestIJA(4)+1];
+    end
+
+    if mod(I,stats)==0,
+      if J>=bestIJA(2),
+        fprintf(logfile,'%dS\t%.6f\t%.6f\t%.6f *\n',I/stats,J,J-J00,A);
+      else
+        fprintf(logfile,'%dS\t%.6f\t%.6f\t%.6f\n',I/stats,J,J-J00,A);
+      end
+      %fprintf(logfile,'%dS\t%.6f\t%.6f\t%.6f%s\n',I/stats,J,J-J00,A,mark);
+      %fprintf(logfile,'%d\t%.8f\t%.8f\t%.8f%s\n',I,J,J-J0,A,mark);
+      J00=J;
+    end
+
+    if I>=maxI || ~isfinite(J) || ~isfinite(A) || (I>=minI && abs(J-J0)<epsilon),
+      fprintf(logfile,'%s stopped iterating, ',fn);
+      if I>=maxI,
+        fprintf(logfile,'reached maximum number of iterations\n');
+      elseif ~isfinite(J) || ~isfinite(A),
+        fprintf(logfile,'reached unstable state\n');
+      else
+        fprintf(logfile,'index has stabilized\n');
+      end
+      break;
+    end
+
+    J0=J;
+    I=I+1;
+
+    dsigm=slope.*fact./((1+fact).^2);
+
+    dnPOS=expPOS./((1+expPOS).^2);
+    dnNEG=expNEG./((1+expNEG).^2);
+
+    W0=dsigm'*(nPOS-nNEG);
+    U0=Wi.*(dsigm'*(POSmV.*dnPOS-NEGmV.*dnNEG));
+    V0=Wi.*Ui.*(dsigm'*(dnNEG-dnPOS));
+
+    W0=overS.*W0;
+    U0=overS.*U0;
+    V0=overS.*V0;
+
+    if adaptrates,
+      rateW=rateW.*max(0.5,1+adaptrate*Wv.*W0);
+      rateU=rateU.*max(0.5,1+adaptrate*Uv.*U0);
+      rateV=rateV.*max(0.5,1+adaptrate*Vv.*V0);
+
+      %if mod(I,stats)==0,
+      %  rates=[rateW(:);rateU(:);rateV(:)];
+      %  fprintf(logfile,'[%f %f]     ',mean(rates),std(rates));
+      %end
+    end
+
+    Wi=Wi+rateW.*W0;
+    Ui=Ui+rateU.*U0;
+    Vi=Vi+rateV.*V0;
+
+    Wi(Wi<0)=0;
+    Wi=Wi./sum(Wi);
+
+    if adaptrates,
+      ddsigm=slope2.*fact.*(fact-1)./((fact+1).^3);
+
+      ddnPOS=(dnPOS.^2).*(1./dnPOS-expPOS-expPOS-2);
+      ddnNEG=(dnNEG.^2).*(1./dnNEG-expNEG-expNEG-2);
+
+      HWv=Wv.*(ddsigm'*((nPOS-nNEG).^2));
+      HUv=Uv.*Wi.*( dsigm'*((POSmV.^2).*ddnPOS-(NEGmV.^2).*ddnNEG) ...
+                   +Wi.*(ddsigm'*((POSmV.*dnPOS-NEGmV.*dnNEG).^2)));
+      HVv=Vv.*Wi.*(Ui.^2).*( dsigm'*(ddnPOS-ddnNEG) ...
+                            +Wi.*(ddsigm'*((dnNEG-dnPOS).^2)));
+
+      HWv=overS.*HWv;
+      HUv=overS.*HUv;
+      HVv=overS.*HVv;
+
+      W0=(Wi-prevW)./rateW;
+
+      Wv=adaptdecay*Wv+rateW.*(W0-adaptdecay.*HWv);
+      Uv=adaptdecay*Uv+rateU.*(U0-adaptdecay.*HUv);
+      Vv=adaptdecay*Vv+rateV.*(V0-adaptdecay.*HVv);
+
+      prevW=Wi;
+    end
+
+  end
+
+  if exactfinalstats,
+    nPOS=1./(1+exp(bestWUV(2*onesP,:).*(bestWUV(3*onesP,:)-POS)));
+    fPOS=nPOS*bestWUV(1,:)';
+    nNEG=1./(1+exp(bestWUV(2*onesN,:).*(bestWUV(3*onesN,:)-NEG)));
+    fNEG=nNEG*bestWUV(1,:)';
+
+    [A,ind]=sort([fNEG;fPOS]);
+    A=100^(overPN*(sum(find(label(ind)))-adjsA));
+
+    fPOS=exp(-slope*fPOS);
+    fNEG=exp(slope*fNEG);
+
+    J=0;
+    for p=1:P,
+      J=J+sum(1./(1+fPOS(p).*fNEG));
+    end
+    J=100^(overPN*J);
+
+    fprintf(logfile,'%s best iteration approx: I=%d J=%f A=%f\n',fn,bestIJA(1),bestIJA(2),bestIJA(3));
+    bestIJA(2)=J;
+    bestIJA(3)=A;
+  end
+
+  end
+
 end
 
 tm=toc;
+fprintf(logfile,'%s best iteration: I=%d J=%f A=%f\n',fn,bestIJA(1),bestIJA(2),bestIJA(3));
+fprintf(logfile,'%s amount of improvement iterations: %f\n',fn,bestIJA(4)/max(I,1));
 fprintf(logfile,'%s average iteration time (ms): %f\n',fn,1000*tm/(I+0.5));
 fprintf(logfile,'%s total iteration time (s): %f\n',fn,tm);
-fprintf(logfile,'%s amount of improvement iterations: %f\n',fn,bestIJA(4)/max(I,1));
-fprintf(logfile,'%s best iteration: I=%d J=%f A=%f\n',fn,bestIJA(1),bestIJA(2),bestIJA(3));
+
+if ~verbose,
+  fclose(logfile);
+end
 
 if exist('sd','var'),
   if sum(sd==0)>0,
