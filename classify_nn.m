@@ -2,7 +2,7 @@ function [E, A, S] = classify_nn(P, Plabels, X, Xlabels, varargin)
 %
 % CLASSIFY_NN: Classify using Nearest Neighbor
 %
-% [E, S] = classif_nn(P, Plabels, X, Xlabels, ...)
+% [E, S] = classify_nn(P, Plabels, X, Xlabels, ...)
 %
 % Input:
 %   P        - Prototypes data matrix. Each column vector is a data point.
@@ -11,6 +11,7 @@ function [E, A, S] = classify_nn(P, Plabels, X, Xlabels, varargin)
 %   Xlabels  - Testing data class labels.
 %
 % Input (optional):
+%   'prior',PRIOR             - A priori probabilities (default=Ncx/Nx)
 %   'perclass',(true|false)   - Compute error for each class (default=false)
 %   'euclidean',(true|false)  - Euclidean distance (default=true)
 %   'cosine',(true|false)     - Cosine distance (default=false)
@@ -62,6 +63,13 @@ argerr=false;
 while size(varargin,2)>0,
   if ~ischar(varargin{n}) || size(varargin,2)<n+1,
     argerr=true;
+  elseif strcmp(varargin{n},'prior'),
+    eval([varargin{n},'=varargin{n+1};']);
+    if ~isnumeric(varargin{n+1}) || sum(sum(varargin{n+1}<0))~=0,
+      argerr=true;
+    else
+      n=n+2;
+    end
   elseif strcmp(varargin{n},'perclass') || ...
          strcmp(varargin{n},'euclidean') || ...
          strcmp(varargin{n},'cosine'),
@@ -96,7 +104,7 @@ elseif size(X,1)~=D,
 elseif max(size(Xlabels))~=Nx || min(size(Xlabels))~=1 || ...
        max(size(Plabels))~=Np || min(size(Plabels))~=1,
   fprintf(logfile,'%s error: labels must have the same size as the number of data points\n',fn);
-  return
+  return;
 end
 
 ind1=[1:Nx]';
@@ -129,8 +137,21 @@ Cp=max(size(unique(Plabels)));
 Fp=(Cp-1)/Cp;
 
 if ~perclass,
-  %E=(sum(dd<ds))/Nx;
-  E=(sum(dd<ds)+Fp*sum(dd==ds))/Nx;
+  if ~exist('prior','var'),
+    E=(sum(dd<ds))/Nx;
+    %E=(sum(dd<ds)+Fp*sum(dd==ds))/Nx;
+  else
+    Clabels=unique(Plabels)';
+    C=max(size(Clabels));
+    E=0;
+    c=1;
+    for label=Clabels,
+      sel=Xlabels==label;
+      E=E+prior(c)*sum(dd(sel)<ds(sel))/sum(sel);
+      %E=E+prior(c)*(sum(dd(sel)<ds(sel))++Fp*sum(dd(sel)==ds(sel)))/sum(sel);
+      c=c+1;
+    end
+  end
 else
   Clabels=unique(Xlabels)';
   C=max(size(Clabels));
@@ -138,8 +159,8 @@ else
   c=1;
   for label=Clabels,
     sel=Xlabels==label;
-    %E(c)=sum(dd(sel)<ds(sel))/sum(sel);
-    E(c)=(sum(dd(sel)<ds(sel))+Fp*sum(dd(sel)==ds(sel)))/sum(sel);
+    E(c)=sum(dd(sel)<ds(sel))/sum(sel);
+    %E(c)=(sum(dd(sel)<ds(sel))+Fp*sum(dd(sel)==ds(sel)))/sum(sel);
     c=c+1;
   end
 end
