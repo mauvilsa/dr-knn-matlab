@@ -2,7 +2,7 @@ function [E, A, S] = classify_nn(P, Plabels, X, Xlabels, varargin)
 %
 % CLASSIFY_NN: Classify using Nearest Neighbor
 %
-% [E, S] = classify_nn(P, Plabels, X, Xlabels, ...)
+% [E, A, S] = classify_nn(P, Plabels, X, Xlabels, ...)
 %
 % Input:
 %   P        - Prototypes data matrix. Each column vector is a data point.
@@ -51,12 +51,24 @@ end
 fn='classify_nn:';
 minargs=4;
 
+E=[];
+A=[];
+S=[];
+
 [D,Np]=size(P);
 Nx=size(X,2);
+if size(Plabels,1)<size(Plabels,2),
+  Plabels=Plabels';
+end
+if size(Xlabels,1)<size(Xlabels,2),
+  Xlabels=Xlabels';
+end
 
 perclass=false;
 euclidean=true;
 cosine=false;
+
+logfile=2;
 
 n=1;
 argerr=false;
@@ -101,8 +113,8 @@ elseif nargin-size(varargin,2)~=minargs,
 elseif size(X,1)~=D,
   fprintf(logfile,'%s error: dimensionality prototypes and data must be the same\n',fn);
   return;
-elseif max(size(Xlabels))~=Nx || min(size(Xlabels))~=1 || ...
-       max(size(Plabels))~=Np || min(size(Plabels))~=1,
+elseif size(Plabels,1)~=Np || size(Plabels,2)~=1 || ...
+      (sum(size(Xlabels))~=0&&(size(Xlabels,1)~=Nx || size(Xlabels,2)~=1)),
   fprintf(logfile,'%s error: labels must have the same size as the number of data points\n',fn);
   return;
 end
@@ -115,60 +127,51 @@ ind2=1:Np;
 ind2=ind2(ones(Nx,1),:);
 ind2=ind2(:);
 
-sel=Plabels(:,ones(Nx,1))'==Xlabels(:,ones(Np,1));
-
 if euclidean,
-  ds=reshape(sum((X(:,ind1)-P(:,ind2)).^2,1),Nx,Np);
+  d=reshape(sum((X(:,ind1)-P(:,ind2)).^2,1),Nx,Np);
 elseif cosine,
   psd=sqrt(sum(P.*P,1));
   P=P./psd(ones(D,1),:);
   xsd=sqrt(sum(X.*X,1));
   X=X./xsd(ones(D,1),:);
-  ds=reshape(1-sum(X(:,ind1).*rP(:,ind2),1),Nx,Np);
+  d=reshape(1-sum(X(:,ind1).*rP(:,ind2),1),Nx,Np);
 end
 
-dd=ds;
-ds(~sel)=inf;
-dd(sel)=inf;
-[ds,is]=min(ds,[],2);
-[dd,id]=min(dd,[],2);
+Clabels=unique(Plabels)';
+Cp=max(size(Clabels));
 
-Cp=max(size(unique(Plabels)));
-Fp=(Cp-1)/Cp;
+dist=zeros(Nx,Cp);
+c=1;
+for label=Clabels,
+  csel=Plabels==label;
+  dist(:,c)=min(d(:,csel),[],2);
+  c=c+1;
+end
 
-if ~perclass,
-  if ~exist('prior','var'),
-    E=(sum(dd<ds))/Nx;
-    %E=(sum(dd<ds)+Fp*sum(dd==ds))/Nx;
-  else
-    Clabels=unique(Plabels)';
-    C=max(size(Clabels));
-    E=0;
+[d1,A]=min(dist,[],2);
+
+if sum(size(Xlabels))~=0,
+  if perclass || exist('prior','var'),
+    E=zeros(C,1);
     c=1;
     for label=Clabels,
       sel=Xlabels==label;
-      E=E+prior(c)*sum(dd(sel)<ds(sel))/sum(sel);
-      %E=E+prior(c)*(sum(dd(sel)<ds(sel))++Fp*sum(dd(sel)==ds(sel)))/sum(sel);
+      E(c)=sum(Clabels(A(sel))'~=label)/sum(sel);
       c=c+1;
     end
-  end
-else
-  Clabels=unique(Xlabels)';
-  C=max(size(Clabels));
-  E=zeros(C,1);
-  c=1;
-  for label=Clabels,
-    sel=Xlabels==label;
-    E(c)=sum(dd(sel)<ds(sel))/sum(sel);
-    %E(c)=(sum(dd(sel)<ds(sel))+Fp*sum(dd(sel)==ds(sel)))/sum(sel);
-    c=c+1;
+    if exist('prior','var'),
+      E=E'*prior;
+    end
+  else
+    E=sum(Clabels(A)'~=Xlabels)/Nx;
   end
 end
 
-if nargout>1,
-  A=Plabels(is);
-  A(dd<=ds)=Plabels(id(dd<=ds));
-end
 if nargout>2,
-  S=dd./(dd+ds);
+  dist(Nx*(A-1)+[1:Nx]')=inf;
+  d2=min(dist,[],2);
+  S=d2./(d1+d2);
+end
+if nargout>1,
+  A=Clabels(A)';
 end
