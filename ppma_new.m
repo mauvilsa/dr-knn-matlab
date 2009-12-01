@@ -21,18 +21,17 @@ function [bestB, bestP] = ppma_new(X, Xlabels, B0, P0, Plabels, varargin)
 %   'epsilon',EPSILON          - Convergence criteria (default=1e-7)
 %   'minI',MINI                - Minimum number of iterations (default=100)
 %   'maxI',MAXI                - Maximum number of iterations (default=1000)
-%%   'prior',PRIOR              - A priori probabilities (default=Nc/N)
 %   'devel',Y,Ylabels          - Set the development set (default=false)
 %   'seed',SEED                - Random seed (default=system)
 %   'stochastic',(true|false)  - Stochastic gradient descend (default=true)
 %   'stochsamples',SAMP        - Samples per stochastic iteration (default=1)
 %   'stocheck',SIT             - Check every SIT stochastic iterations (default=100)
+%   'stocheckfull',(true|f...  - Stats for complete data set (default=false)
+%   'stochfinalexact',(tru...  - Final stats for complete data set (default=true)
 %   'stats',STAT               - Statistics every STAT (default={b:1,s:1000})
 %   'orthoit',OIT              - Orthogonalize every OIT (default=1)
 %   'orthonormal',(true|false) - Orthonormal projection base (default=true)
 %   'orthogonal',(true|false)  - Orthogonal projection base (default=false)
-%   'euclidean',(true|false)   - Euclidean distance (default=true)
-%   'cosine',(true|false)      - Cosine distance (default=false)
 %   'normalize',(true|false)   - Normalize training data (default=true)
 %   'linearnorm',(true|false)  - Linear normalize training data (default=false)
 %   'whiten',(true|false)      - Whiten training data (default=false)
@@ -78,8 +77,6 @@ bestB=[];
 bestP=[];
 
 c2faster=false;
-c2faster=true;
-auctypeA=false;
 auctypeA=true;
 
 slope=30;
@@ -107,8 +104,8 @@ stocheckfull=false;
 stochfinalexact=true;
 orthonormal=true;
 orthogonal=false;
-euclidean=true;
-cosine=false;
+%euclidean=true;
+%cosine=false;
 normalize=true;
 linearnorm=false;
 whiten=false;
@@ -142,7 +139,6 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'stochsamples') || ...
          strcmp(varargin{n},'stocheck') || ...
          strcmp(varargin{n},'seed'),
-         %strcmp(varargin{n},'prior') || ...
     eval([varargin{n},'=varargin{n+1};']);
     if ~isnumeric(varargin{n+1}) || sum(sum(varargin{n+1}<0))~=0,
       argerr=true;
@@ -151,15 +147,16 @@ while size(varargin,2)>0,
     end
   elseif strcmp(varargin{n},'orthonormal') || ...
          strcmp(varargin{n},'orthogonal') || ...
-         strcmp(varargin{n},'euclidean') || ...
-         strcmp(varargin{n},'cosine') || ...
          strcmp(varargin{n},'normalize') || ...
          strcmp(varargin{n},'linearnorm') || ...
          strcmp(varargin{n},'whiten') || ...
          strcmp(varargin{n},'stochastic') || ...
          strcmp(varargin{n},'stocheckfull') || ...
+         strcmp(varargin{n},'stochfinalexact') || ...
          strcmp(varargin{n},'autoprobe') || ...
          strcmp(varargin{n},'adaptrates') || ...
+         strcmp(varargin{n},'c2faster') || ...
+         strcmp(varargin{n},'auctypeA') || ...
          strcmp(varargin{n},'verbose'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~islogical(varargin{n+1}),
@@ -170,10 +167,10 @@ while size(varargin,2)>0,
           orthogonal=false;
         elseif strcmp(varargin{n},'orthogonal'),
           orthonormal=false;
-        elseif strcmp(varargin{n},'euclidean'),
-          cosine=false;
-        elseif strcmp(varargin{n},'cosine'),
-          euclidean=false;
+        %elseif strcmp(varargin{n},'euclidean'),
+        %  cosine=false;
+        %elseif strcmp(varargin{n},'cosine'),
+        %  euclidean=false;
         elseif strcmp(varargin{n},'normalize'),
           whiten=false;    linearnorm=false;
         elseif strcmp(varargin{n},'linearnorm'),
@@ -198,34 +195,28 @@ while size(varargin,2)>0,
 end
 
 if exist('probemode','var'),
-  onesR=probemode.onesR;
   rateB=probemode.rateB;
   rateP=probemode.rateP;
   minI=probemode.minI;
   maxI=probemode.maxI;
   probeunstable=minI;
-  slope=probemode.slope;
   stats=probemode.stats;
   orthoit=probemode.orthoit;
   orthonormal=probemode.orthonormal;
   orthogonal=probemode.orthogonal;
-  euclidean=probemode.euclidean;
-  cosine=probemode.cosine;
+  %euclidean=probemode.euclidean;
+  %cosine=probemode.cosine;
   stochastic=probemode.stochastic;
-  %prior=probemode.prior;
-  %cfact=probemode.cfact;
-  %jfact=probemode.jfact;
-  %ind1=probemode.ind1;
-  %ind2=probemode.ind2;
-  %sel=probemode.sel;
   devel=probemode.devel;
+  work=probemode.work;
   if devel,
+    dwork=probemode.dwork;
     Y=probemode.Y;
     Ylabels=probemode.Ylabels;
   end
   if stochastic,
-    onesNp=probemode.onesNp;
-    %cumprior=probemode.cumprior;
+    swork=probemode.swork;
+    cumprior=probemode.cumprior;
     nc=probemode.nc;
     cnc=probemode.cnc;
   end
@@ -273,9 +264,6 @@ elseif devel,
     fprintf(logfile,'%s error: there must be the same classes in labels and at least one prototype per class\n',fn);
     return;
   end
-%elseif exist('prior','var') && max(size(prior))~=C,
-%  fprintf(logfile,'%s error: the size of prior must be the same as the number of classes\n',fn);
-%  return;
 end
 
 if ~verbose,
@@ -298,9 +286,9 @@ if ~probemode,
   if normalize || linearnorm,
     xmu=mean(X,2);
     xsd=std(X,1,2);
-    if euclidean,
+    %if euclidean,
       xsd=R*xsd;
-    end
+    %end
     if linearnorm,
       xsd=max(xsd)*ones(size(xsd));
     end
@@ -334,9 +322,9 @@ if ~probemode,
     W=W(:,V>eps);
     V=V(V>eps);
     W=W.*repmat((1./sqrt(V))',D,1);
-    if euclidean,
+    %if euclidean,
       W=(1/R).*W;
-    end
+    %end
     xmu=mean(X,2);
     X=W'*(X-xmu(:,onesNx));
     P0=W'*(P0-xmu(:,onesNp));
@@ -377,14 +365,9 @@ if ~probemode,
     end
   end
 
-  %jfact=1;
-  %cfact=zeros(Nx,1);
-  %for c=1:C,
-  %  cfact(Xlabels==c)=prior(c)/sum(Xlabels==c);
-  %end
+  rfact=1;
   %if euclidean,
-  %  cfact=2*cfact;
-  %  jfact=0.5;
+    rfact=2;
   %end
 
   if stochastic,
@@ -408,15 +391,7 @@ if ~probemode,
     orthoit=orthoit*stocheck;
     minI=minI*stocheck;
     maxI=maxI*stocheck;
-    %onesS=ones(stochsamples,1);
-    %overS=1/stochsamples;
     stats=stats*stocheck;
-    %ind3=[1:stochsamples]';
-    %ind3=ind3(:,onesNp);
-    %ind3=ind3(:);
-    %ind4=1:Np;
-    %ind4=ind4(onesS,:);
-    %ind4=ind4(:);
   else
     if ~exist('stats','var'),
       stats=1;
@@ -436,8 +411,29 @@ if ~probemode,
   work.ind2=ind2;
   work.c2faster=c2faster;
   work.auctypeA=auctypeA;
-  
-  %sel=Plabels(:,onesNx)'==Xlabels(:,onesNp);
+  work.C=C;
+
+  if stochastic,
+    c1=1:C;
+    c1=c1(ones(stochsamples,1),:);
+    c1=c1(:);
+    stochsamples=C*stochsamples;
+
+    ind1=[1:2*stochsamples]';
+    ind1=ind1(:,onesNp);
+    ind1=ind1(:);
+
+    ind2=1:Np;
+    ind2=ind2(ones(2*stochsamples,1),:);
+    ind2=ind2(:);
+
+    swork.slope=slope;
+    swork.ind1=ind1;
+    swork.ind2=ind2;
+    swork.auctypeA=auctypeA;
+    swork.C=C;
+    swork.onesR=onesR;
+  end
 
   if devel,
     ind1=[1:Ny]';
@@ -453,6 +449,7 @@ if ~probemode,
     dwork.ind2=ind2;
     dwork.c2faster=c2faster;
     dwork.auctypeA=auctypeA;
+    dwork.C=C;
   end
 
   clear onesNx onesNy;
@@ -466,29 +463,29 @@ if autoprobe,
 end
 if exist('probe','var'),
   tic;
-  probecfg.onesR=onesR;
   probecfg.minI=round(probeunstable*probeI);
   probecfg.maxI=probeI;
-  probecfg.slope=slope;
   probecfg.stats=stats;
   probecfg.orthoit=orthoit;
   probecfg.orthonormal=orthonormal;
   probecfg.orthogonal=orthogonal;
-  probecfg.euclidean=euclidean;
-  probecfg.cosine=cosine;
+  %probecfg.euclidean=euclidean;
+  %probecfg.cosine=cosine;
   probecfg.stochastic=stochastic;
-  %probecfg.prior=prior;
-  probecfg.cfact=cfact;
-  probecfg.ind1=ind1;
-  probecfg.ind2=ind2;
-  %probecfg.sel=sel;
+  probecfg.devel=devel;
+  probecfg.work=work;
+  if devel,
+    probecfg.dwork=dwork;
+    probecfg.Y=Y;
+    probecfg.Ylabels=Ylabels;
+  end
   if stochastic,
-    probecfg.onesNp=onesNp;
+    probecfg.swork=swork;
     probecfg.cumprior=cumprior;
     probecfg.nc=nc;
     probecfg.cnc=cnc;
   end
-  bestIJA=[0,1];
+  bestIJA=[0,0];
   ratesB=unique(probe(1,probe(1,:)>=0));
   ratesP=unique(probe(2,probe(2,:)>=0));
   nB=1;
@@ -498,9 +495,9 @@ if exist('probe','var'),
       if ~(ratesB(nB)==0 && ratesP(nP)==0),
         probecfg.rateB=ratesB(nB);
         probecfg.rateP=ratesP(nP);
-        [I,J]=ldpp(X,Xlabels,B0,P0,Plabels,'probemode',probecfg);
+        [I,J]=ppma(X,Xlabels,B0,P0,Plabels,'probemode',probecfg);
         mark='';
-        if I>bestIJA(1) || (I==bestIJA(1) && J<bestIJA(2)),
+        if I>bestIJA(1) || (I==bestIJA(1) && J>bestIJA(2)),
           bestIJA=[I,J];
           rateB=ratesB(nB);
           rateP=ratesP(nP);
@@ -561,9 +558,9 @@ if ~stochastic,
   while true,
 
     %%% Compute statistics %%%
-    [A, J, fX, fP] = ppma_index(Bi'*Pi, Plabels, Bi'*X, Xlabels, work);
+    [A,J,fX,fP]=ppma_index(Bi'*Pi,Plabels,Bi'*X,Xlabels,work);
     if devel,
-      A = ppma_index(Bi'*Pi, Plabels, Bi'*Y, Ylabels, dwork);
+      A=ppma_index(Bi'*Pi,Plabels,Bi'*Y,Ylabels,dwork);
     end
 
     %%% Determine if there was improvement %%%
@@ -604,8 +601,8 @@ if ~stochastic,
     I=I+1;
 
     %%% Update parameters %%%
-    Bi=Bi+rateB.*(X*fX'+Pi*fP');
-    Pi=Pi+rateP.*(Bi*fP);
+    Bi=Bi+rfact.*rateB.*(X*fX'+Pi*fP');
+    Pi=Pi+rfact.*rateP.*(Bi*fP);
 
     %%% Parameter constraints %%%
     if mod(I,orthoit)==0,
@@ -622,46 +619,43 @@ if ~stochastic,
 else
 
   prevJ=1;
-  prevE=1;
+  prevA=1;
 
   while true,
 
     if mod(I,stocheck)==0 && stocheckfull,
-      [A, J] = ppma_index(Bi'*P, Plabels, Bi'*X, Xlabels, work);
+      [A,J]=ppma_index(Bi'*Pi,Plabels,Bi'*X,Xlabels,work);
+      if devel,
+        A=ppma_index(Bi'*Pi,Plabels,Bi'*Y,Ylabels,dwork);
+      end
     end
 
+    %%% Select random samples %%%
     if auctypeA,
-      c=round((C-1)*rand(stochsamples,1))+1;
-      n1=cnc(c)+round((nc(c)-1).*rand(stochsamples,1))+1;
-      n2=mod(cnc(c)+nc(c)+round((Nx-nc(c)-1).*rand(stochsamples,1)),Nx)+1;
-    else
-      c1=round((C-1)*rand(stochsamples,1))+1;
-      c2=mod(c1+round((C-2).*rand(stochsamples,1)),C)+1;
+      c2=[];
       n1=cnc(c1)+round((nc(c1)-1).*rand(stochsamples,1))+1;
-      n2=cnc(c2)+round((nc(c2)-1).*rand(stochsamples,1))+1;
+      n2=mod(cnc(c1)+nc(c1)+round((Nx-nc(c1)-1).*rand(stochsamples,1)),Nx)+1;
+    %else
+    %  c2=mod(c1+round((C-2).*rand(stochsamples,1)),C)+1;
+    %  n1=cnc(c1)+round((nc(c1)-1).*rand(stochsamples,1))+1;
+    %  n2=cnc(c2)+round((nc(c2)-1).*rand(stochsamples,1))+1;
     end
-    
-    %??????????????????    
 
     %%% Compute statistics %%%
+    sX=[X(:,n1),X(:,n2)];
+    [Ai,Ji,fX,fP]=ppma_sindex(Bi'*Pi,Plabels,Bi'*sX,c1,c2,swork);
     if ~stocheckfull,
-      [A, J, fX, fP] = ppma_index(Bi'*P, Plabels, Bi'*X, Xlabels, work);
-      J=0.5*(0.9*prevJ+J);
+      J=0.5*(0.9*prevJ+Ji);
       prevJ=J;
       if ~devel,
-        E=0;
-        for c=1:C,
-          csel=randc==c;
-          E=E+prior(c)*sum(dd(csel)<ds(csel))/max(sum(csel),1);
-        end
-        E=0.5*(0.9*prevE+E);
-        prevE=E;
+        A=0.5*(0.9*prevA+Ai);
+        prevA=A;
       end
     end
 
     if mod(I,stocheck)==0,
       if ~stocheckfull && devel,
-        E=classify_nn(rP,Plabels,Bi'*Y,Ylabels,'prior',prior);
+        A=ppma_index(Bi'*Pi,Plabels,Bi'*Y,Ylabels,dwork);
       end
 
       %%% Determine if there was improvement %%%
@@ -670,13 +664,13 @@ else
          ( testA && A>=bestIJA(3)),
         bestB=Bi;
         bestP=Pi;
-        bestIJA=[I J E bestIJA(4)+1];
+        bestIJA=[I J A bestIJA(4)+1];
         mark=' *';
       end
 
       %%% Print statistics %%%
       if mod(I,stats)==0,
-        fprintf(logfile,'%d\t%.9f\t%.9f\t%f%s\n',I,J,J-J00,E,mark);
+        fprintf(logfile,'%d\t%.9f\t%.9f\t%f%s\n',I,J,J-J00,A,mark);
         J00=J;
       end
 
@@ -686,26 +680,26 @@ else
           break;
         end
       end
-      if I>=maxI || ~isfinite(J) || ~isfinite(E) || (I>=minI && abs(J-J0)<epsilon),
+      if I>=maxI || ~isfinite(J) || ~isfinite(A) || (I>=minI && abs(J-J0)<epsilon),
         fprintf(logfile,'%s stopped iterating, ',fn);
         if I>=maxI,
           fprintf(logfile,'reached maximum number of iterations\n');
-        elseif ~isfinite(J) || ~isfinite(E),
+        elseif ~isfinite(J) || ~isfinite(A),
           fprintf(logfile,'reached unstable state\n');
         else
           fprintf(logfile,'index has stabilized\n');
         end
         break;
       end
-    
+
       J0=J;
     end % if mod(I,stocheck)==0
 
     I=I+1;
 
     %%% Update parameters %%%
-    Bi=Bi+rateB.*(X*fX'+Pi*fP');
-    Pi=Pi+rateP.*(Bi*fP);
+    Bi=Bi+rfact.*rateB.*(sX*fX'+Pi*fP');
+    Pi=Pi+rfact.*rateP.*(Bi*fP);
 
     %%% Parameter constraints %%%
     if mod(I,orthoit)==0,
@@ -727,12 +721,17 @@ else
 
   %%% Compute final statistics %%%
   if stochfinalexact && ~stocheckfull,
-    [A, J] = ppma_index(bestB'*bestP, Plabels, bestB'*X, Xlabels, work);
+    [A,J]=ppma_index(bestB'*bestP,Plabels,bestB'*X,Xlabels,work);
+    if devel,
+      A=ppma_index(bestB'*bestP,Plabels,bestB'*Y,Ylabels,dwork);
+    end
 
     fprintf(logfile,'%s best iteration approx: I=%d J=%f A=%f\n',fn,bestIJA(1),bestIJA(2),bestIJA(3));
     bestIJA(2)=J;
     bestIJA(3)=A;
   end % if stochfinalexact
+
+  bestIJA(4)=bestIJA(4)*stocheck;
 end
 
 if ~probemode,
@@ -784,13 +783,13 @@ function [A, J, fX, fP] = ppma_index(P, Plabels, X, Xlabels, work)
 
   [R,Np]=size(P);
   Nx=size(X,2);
-  C=max(size(unique(Plabels)));
 
   ind1=work.ind1;
   ind2=work.ind2;
   slope=work.slope;
   auctypeA=work.auctypeA;
   c2faster=work.c2faster;
+  C=work.C;
 
   d=reshape(sum((X(:,ind1)-P(:,ind2)).^2,1),Nx,Np);
 
@@ -817,10 +816,11 @@ function [A, J, fX, fP] = ppma_index(P, Plabels, X, Xlabels, work)
   if auctypeA, % opA
 
     CC=C;
-    if C==2 && c2faster,
+    if C==2 && c2faster, % problem with fP
       CC=1;
+    else
+      c2faster=false;
     end
-    CC
 
     %for c=1:C,
     for c=1:CC,
@@ -837,7 +837,7 @@ function [A, J, fX, fP] = ppma_index(P, Plabels, X, Xlabels, work)
       Jc=0;
       NP=size(POS,1);
       if grad,
-        fact=1/(sum(ns)*sum(nd)*C);
+        fact=1/(sum(ns)*sum(nd)*CC);
         ns=find(ns);
         nd=find(nd);
         is=indx(:,c);
@@ -873,29 +873,11 @@ function [A, J, fX, fP] = ppma_index(P, Plabels, X, Xlabels, work)
           end
         end
       end
-      %for n=1:NP,
-      %  expon=eNEG.*ePOS(n);
-      %  Jc=Jc+sum(1./(1+expon));
-      %  dsigm=slope.*expon./((1+expon).^2);
-      %  fX(:,ns(n))=fX(:,ns(n))+(fact.*sum(dsigm)./(ds(ns(n))+dd(ns(n)))).*((1-POS(n))        .*(X(:,ns(n))-P(:,id(ns(n))))-POS(n)          .*(X(:,ns(n))-P(:,is(ns(n)))));
-      %  fX(:,nd)   =fX(:,nd)   -repmat(fact.*dsigm./(ds(nd)+dd(nd)),1,R)'.*(repmat(1-NEG,1,R)'.*(X(:,nd)   -P(:,id(nd)))   -repmat(NEG,1,R)'.*(X(:,nd)   -P(:,is(nd))));   
-      %  fP(:,id(ns(n)))=fP(:,id(ns(n)))-(fact.*sum(dsigm)./(ds(ns(n))+dd(ns(n)))).*(1-POS(n)) .*(X(:,ns(n))-P(:,id(ns(n))));
-      %  fP(:,is(ns(n)))=fP(:,is(ns(n)))+(fact.*sum(dsigm)./(ds(ns(n))+dd(ns(n)))).*POS(n)     .*(X(:,ns(n))-P(:,is(ns(n))));
-      %  for idnd=unique(id(nd))',
-      %    fP(:,idnd)=fP(:,idnd)+sum(repmat(fact.*dsigm./(ds(nd)+dd(nd)),1,R)'.*repmat(1-NEG,1,R)'.*(X(:,nd)-P(:,id(nd))),2);
-      %  end
-      %  for isnd=unique(is(nd))',
-      %    fP(:,isnd)=fP(:,isnd)-sum(repmat(fact.*dsigm./(ds(nd)+dd(nd)),1,R)'.*repmat(NEG,1,R)'  .*(X(:,nd)-P(:,is(nd))),2);
-      %  end
-      %end
       J=J+Jc/(NP*(Nx-NP));
     end
-    if ~(C==2 && c2faster),
+    if ~c2faster,
       A=A/C;
       J=J/C;
-    elseif grad,
-      fX=fX+fX;
-      fP=fP+fP;
     end
 
   %%% c against cc %%% dhand
@@ -951,21 +933,6 @@ function [A, J, fX, fP] = ppma_index(P, Plabels, X, Xlabels, work)
               end
             end
           end
-          %for n=1:NP,
-          %  expon=eNEG.*ePOS(n);
-          %  Jc=Jc+sum(1./(1+expon));
-          %  dsigm=slope.*expon./((1+expon).^2);
-          %  fX(:,ns(n))=fX(:,ns(n))+(fact.*sum(dsigm)./(ds(ns(n))+dd(ns(n)))).*((1-POS(n))        .*(X(:,ns(n))-P(:,id(ns(n))))-POS(n)          .*(X(:,ns(n))-P(:,is(ns(n)))));
-          %  fX(:,nd)   =fX(:,nd)   -repmat(fact.*dsigm./(ds(nd)+dd(nd)),1,R)'.*(repmat(1-NEG,1,R)'.*(X(:,nd)   -P(:,id(nd)))   -repmat(NEG,1,R)'.*(X(:,nd)   -P(:,is(nd))));   
-          %  fP(:,id(ns(n)))=fP(:,id(ns(n)))-(fact.*sum(dsigm)./(ds(ns(n))+dd(ns(n)))).*(1-POS(n)) .*(X(:,ns(n))-P(:,id(ns(n))));
-          %  fP(:,is(ns(n)))=fP(:,is(ns(n)))+(fact.*sum(dsigm)./(ds(ns(n))+dd(ns(n)))).*POS(n)     .*(X(:,ns(n))-P(:,is(ns(n))));
-          %  for idnd=unique(id(nd))',
-          %    fP(:,idnd)=fP(:,idnd)+sum(repmat(fact.*dsigm./(ds(nd)+dd(nd)),1,R)'.*repmat(1-NEG,1,R)'.*(X(:,nd)-P(:,id(nd))),2);
-          %  end
-          %  for isnd=unique(is(nd))',
-          %    fP(:,isnd)=fP(:,isnd)-sum(repmat(fact.*dsigm./(ds(nd)+dd(nd)),1,R)'.*repmat(NEG,1,R)'  .*(X(:,nd)-P(:,is(nd))),2);
-          %  end
-          %end
           J=J+Jc/(NP*NN);
         end
       end
@@ -976,9 +943,83 @@ function [A, J, fX, fP] = ppma_index(P, Plabels, X, Xlabels, work)
   end
 
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [A, J, fX, fP] = ppma_sindex(P, Plabels, X, Xlabels, work)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [A, J, fXY, fP] = ppma_sindex(P, Plabels, XY, Xlabels, Ylabels, work)
 
   [R,Np]=size(P);
-  Nx=size(X,2);
-  C=max(size(unique(Plabels)));
+  Nx=size(Xlabels,1);
+  Nxy=size(XY,2);
+
+  ind1=work.ind1;
+  ind2=work.ind2;
+  onesR=work.onesR;
+  slope=work.slope;
+  auctypeA=work.auctypeA;
+  C=work.C;
+
+  d=reshape(sum((XY(:,ind1)-P(:,ind2)).^2,1),Nxy,Np);
+
+  %%% c against the rest %%%
+  if auctypeA, % opA
+
+    X=XY(:,1:Nx);
+    Y=XY(:,Nx+1:end);
+    dX=d(1:Nx,:);
+    dY=d(Nx+1:end,:);
+
+    dsX=zeros(Nx,1);
+    ddX=zeros(Nx,1);
+    isX=zeros(Nx,1);
+    idX=zeros(Nx,1);
+    dsY=zeros(Nx,1);
+    ddY=zeros(Nx,1);
+    isY=zeros(Nx,1);
+    idY=zeros(Nx,1);
+    for c=1:C,
+      sel=Xlabels==c;
+      psel=Plabels==c;
+      asel=find(psel);
+      [dsX(sel),isX(sel)]=min(dX(sel,psel),[],2);
+      [dsY(sel),isY(sel)]=min(dY(sel,psel),[],2);
+      isX(sel)=asel(isX(sel));
+      isY(sel)=asel(isY(sel));
+      psel=~psel;
+      asel=find(psel);
+      [ddX(sel),idX(sel)]=min(dX(sel,psel),[],2);
+      [ddY(sel),idY(sel)]=min(dY(sel,psel),[],2);
+      idX(sel)=asel(idX(sel));
+      idY(sel)=asel(idY(sel));
+    end
+
+    POS=ddX./(ddX+dsX);
+    NEG=ddY./(ddY+dsY);
+    expon=exp(slope*(NEG-POS));
+
+    A=(sum(POS>NEG)+0.5*sum(POS==NEG))/Nx;
+    J=(sum(1./(1+expon)))/Nx;
+
+    dsigm=slope.*expon./(Nx*(1+expon).^2);
+    factPOS=dsigm./(dsX+ddX);
+    factNEG=dsigm./(dsY+ddY);
+    fPOS=factPOS.*POS;
+    fNEG=factNEG.*NEG;
+    fONEmPOS=factPOS-fPOS;
+    fONEmNEG=factNEG-fNEG;
+    fddXP=fONEmPOS(:,onesR)'.*(X-P(:,idX));
+    fdsXP=    fPOS(:,onesR)'.*(X-P(:,isX));
+    fddYP=fONEmNEG(:,onesR)'.*(Y-P(:,idY));
+    fdsYP=    fNEG(:,onesR)'.*(Y-P(:,isY));
+    fXY=[fddXP-fdsXP,fdsYP-fddYP];
+    fP=zeros(R,Np);
+    for n=1:Np
+      fP(:,n)=-sum(fddXP(:,idX==n),2) ...
+              +sum(fdsXP(:,isX==n),2) ...
+              +sum(fddYP(:,idY==n),2) ...
+              -sum(fdsYP(:,isY==n),2);
+    end
+
+  %%% c against cc %%% dhand
+  %else % opB
+  % not implemented
+  
+  end
