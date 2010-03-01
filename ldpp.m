@@ -930,3 +930,22 @@ function [E, J, fX, fP] = ldpp_sindex(P, Plabels, X, Xlabels, work)
       fP(:,m)=-sum(Xs(:,is==m),2)+sum(Xd(:,id==m),2);
     end
   end
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function X = orthonorm(X)
+
+  for n=1:size(X,2),
+    for m=1:n-1,
+      X(:,n)=X(:,n)-(X(:,n)'*X(:,m))*X(:,m);
+    end
+    X(:,n)=(1/sqrt(X(:,n)'*X(:,n)))*X(:,n);
+  end
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function X = orthounit(X)
+
+  onX=orthonorm(X);
+  X=onX.*repmat(sum(onX'*X,1),size(X,1),1);
+  X=sqrt(size(X,2)).*X./sqrt(sum(diag(X'*X)));
