@@ -198,6 +198,14 @@ while size(varargin,2)>0,
   end
 end
 
+[D,Nx]=size(X);
+C=max(size(unique(Plabels)));
+R=size(B0,2);
+Np=size(P0,2);
+if devel,
+  Ny=size(Y,2);
+end
+
 if exist('probemode','var'),
   rateB=probemode.rateB;
   rateP=probemode.rateP;
@@ -234,14 +242,6 @@ if exist('probemode','var'),
   probemode=true;
 else
   probemode=false;
-end
-
-[D,Nx]=size(X);
-C=max(size(unique(Plabels)));
-R=size(B0,2);
-Np=size(P0,2);
-if devel,
-  Ny=size(Y,2);
 end
 
 %%% Error detection %%%
@@ -311,25 +311,25 @@ if ~probemode,
       xmu=full(xmu);
       xsd=full(xsd);
       X=X./xsd(:,onesNx);
-      P0=P0./xsd(:,onesNp);
       if devel,
         Y=Y./xsd(:,onesNy);
       end
+      P0=P0./xsd(:,onesNp);
     else
       X=(X-xmu(:,onesNx))./xsd(:,onesNx);
-      P0=(P0-xmu(:,onesNp))./xsd(:,onesNp);
       if devel,
         Y=(Y-xmu(:,onesNy))./xsd(:,onesNy);
       end
+      P0=(P0-xmu(:,onesNp))./xsd(:,onesNp);
     end
     B0=B0.*xsd(:,onesR);
     if sum(xsd==0)>0,
       X(xsd==0,:)=[];
-      B0(xsd==0,:)=[];
-      P0(xsd==0,:)=[];
       if devel,
         Y(xsd==0,:)=[];
       end
+      B0(xsd==0,:)=[];
+      P0(xsd==0,:)=[];
       fprintf(logfile,'%s warning: some dimensions have a standard deviation of zero\n',fn);
     end
   elseif whiten,
@@ -342,10 +342,10 @@ if ~probemode,
     end
     xmu=mean(X,2);
     X=W'*(X-xmu(:,onesNx));
-    P0=W'*(P0-xmu(:,onesNp));
     if devel,
       Y=W'*(Y-xmu(:,onesNy));
     end
+    P0=W'*(P0-xmu(:,onesNp));
     IW=pinv(W);
     B0=IW*B0;
   end
@@ -390,6 +390,7 @@ if ~probemode,
     jfact=0.5;
   end
 
+  %%% Stochastic preprocessing %%%
   if stochastic,
     [Xlabels,srt]=sort(Xlabels);
     X=X(:,srt);
@@ -412,6 +413,14 @@ if ~probemode,
     onesC=ones(C,1);
   end
 
+  %%% Initial parameter constraints %%%
+  if orthonormal,
+    B0=orthonorm(B0);
+  elseif orthogonal,
+    B0=orthounit(B0);
+  end
+
+  %%% Constant data structures %%%
   ind1=[1:Nx]';
   ind1=ind1(:,onesNp);
   ind1=ind1(:);
@@ -556,12 +565,6 @@ if exist('probe','var'),
   end
   fprintf(logfile,'%s total probe time (s): %f\n',fn,toc);
   fprintf(logfile,'%s selected rates={%.2E %.2E} impI=%.2f J=%.4f\n',fn,rateB,rateP,bestIJE(1)/probeI,bestIJE(2));
-end
-
-if orthonormal,
-  B0=orthonorm(B0);
-elseif orthogonal,
-  B0=orthounit(B0);
 end
 
 Bi=B0;
@@ -797,11 +800,11 @@ elseif whiten,
 end
 
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%                   Helper functions                    %%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%                            Helper functions                             %%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [E, J, fX, fP] = ldpp_index(P, Plabels, X, Xlabels, work)
 
   R=work.R;
