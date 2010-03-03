@@ -1,20 +1,21 @@
-function [bestB, bestP] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
+function [bestB, bestP, bestPP] = ldppr(X, XX, B0, P0, PP0, varargin)
 %
-% LDPP: Learning Discriminative Projections and Prototypes for NN Classification
+% LDPPR: Learning Discriminative Projections and Prototypes for Regression
 %
-% [B, P] = ldpp(X, Xlabels, B0, P0, Plabels, ...)
+% [B, P, PP] = ldppr(X, XX, B0, P0, PP0, ...)
 %
 % Input:
-%   X       - Data matrix. Each column vector is a data point.
-%   Xlabels - Data class labels.
+%   X       - Independent training data. Each column vector is a data point.
+%   XX      - Dependent training data.
 %   B0      - Initial projection base.
-%   P0      - Initial prototypes.
-%   Plabels - Prototype class labels.
+%   P0      - Initial independent prototype data.
+%   PP0     - Initial dependent prototype data.
 %
 % Input (optional):
-%   'slope',SLOPE              - Sigmoid slope (defaul=10)
+%   'slope',SLOPE              - Tanh slope (default=1)
 %   'rateB',RATEB              - Projection base learning rate (default=0.1)
-%   'rateP',RATEP              - Prototypes learning rate (default=0.1)
+%   'rateP',RATEP              - Ind. Prototypes learning rate (default=0.1)
+%   'ratePP',RATEPP            - Dep. Prototypes learning rate (default=0)
 %   'epsilon',EPSILON          - Convergence criteria (default=1e-7)
 %   'minI',MINI                - Minimum number of iterations (default=100)
 %   'maxI',MAXI                - Maximum number of iterations (default=1000)
@@ -22,7 +23,6 @@ function [bestB, bestP] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
 %   'probe',PROBE              - Probe learning rates (default=false)
 %   'probeI',PROBEI            - Iterations for probing (default=100)
 %   'autoprobe',(true|false)   - Automatic probing (default=false)
-%   'prior',PRIOR              - A priori probabilities (default=Nc/N)
 %   'devel',Y,Ylabels          - Set the development set (default=false)
 %   'seed',SEED                - Random seed (default=system)
 %   'stochastic',(true|false)  - Stochastic gradient descend (default=true)
@@ -43,18 +43,11 @@ function [bestB, bestP] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
 %
 % Output:
 %   B       - Final learned projection base
-%   P       - Final learned prototypes
+%   P       - Final learned independent prototype data
+%   PP      - Final learned dependent prototype data
 %
-%
-% Reference:
-%
-%   M. Villegas and R. Paredes. "Simultaneous Learning of a Discriminative
-%   Projection and Prototypes for Nearest-Neighbor Classification."
-%   CVPR'2008.
-%
-%
-% $Revision$
-% $Date$
+% $Revision: 70 $
+% $Date: 2009-10-19 09:34:45 +0200 (Mon, 19 Oct 2009) $
 %
 
 %
@@ -75,20 +68,22 @@ function [bestB, bestP] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
 %
 
 if strncmp(X,'-v',2),
-  unix('echo "$Revision$* $Date$*" | sed "s/^:/ldpp: revision/g; s/ : /[/g; s/ (.*)/]/g;"');
+  unix('echo "$Revision: 70 $* $Date: 2009-10-19 09:34:45 +0200 (Mon, 19 Oct 2009) $*" | sed "s/^:/ldppr: revision/g; s/ : /[/g; s/ (.*)/]/g;"');
   return;
 end
 
-fn='ldpp:';
+fn='ldppr:';
 minargs=5;
 
 %%% Default values %%%
 bestB=[];
 bestP=[];
+bestPP=[];
 
-slope=10;
+slope=1;
 rateB=0.1;
 rateP=0.1;
+ratePP=0;
 
 probeI=100;
 probeunstable=0.2;
@@ -113,7 +108,9 @@ cosine=false;
 normalize=true;
 linearnorm=false;
 whiten=false;
+indepPP=false;
 testJ=false;
+MAD=false;
 
 logfile=2;
 verbose=true;
@@ -131,13 +128,13 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'rates') || ...
          strcmp(varargin{n},'rateB') || ...
          strcmp(varargin{n},'rateP')  || ...
+         strcmp(varargin{n},'ratePP')  || ...
          strcmp(varargin{n},'epsilon') || ...
          strcmp(varargin{n},'minI') || ...
          strcmp(varargin{n},'maxI') || ...
          strcmp(varargin{n},'stats') || ...
          strcmp(varargin{n},'probe') || ...
          strcmp(varargin{n},'probeI') || ...
-         strcmp(varargin{n},'prior') || ...
          strcmp(varargin{n},'seed') || ...
          strcmp(varargin{n},'stochsamples') || ...
          strcmp(varargin{n},'stocheck') || ...
@@ -160,7 +157,9 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'stocheckfull') || ...
          strcmp(varargin{n},'stochfinalexact') || ...
          strcmp(varargin{n},'autoprobe') || ...
+         strcmp(varargin{n},'indepPP') || ...
          strcmp(varargin{n},'testJ') || ...
+         strcmp(varargin{n},'MAD') || ...
          strcmp(varargin{n},'verbose'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~islogical(varargin{n+1}),
@@ -188,7 +187,7 @@ while size(varargin,2)>0,
   elseif strcmp(varargin{n},'devel'),
     devel=true;
     Y=varargin{n+1};
-    Ylabels=varargin{n+2};
+    YY=varargin{n+2};
     n=n+3;
   else
     argerr=true;
@@ -199,7 +198,7 @@ while size(varargin,2)>0,
 end
 
 [D,Nx]=size(X);
-C=max(size(unique(Plabels)));
+DD=size(XX,1);
 R=size(B0,2);
 Np=size(P0,2);
 if devel,
@@ -207,8 +206,10 @@ if devel,
 end
 
 if exist('probemode','var'),
+  onesDD=probemode.onesDD;
   rateB=probemode.rateB;
   rateP=probemode.rateP;
+  ratePP=probemode.ratePP;
   minI=probemode.minI;
   maxI=probemode.maxI;
   probeunstable=minI;
@@ -222,15 +223,10 @@ if exist('probemode','var'),
   if devel,
     dwork=probemode.dwork;
     Y=probemode.Y;
-    Ylabels=probemode.Ylabels;
+    YY=probemode.YY;
   end
   if stochastic,
     swork=probemode.swork;
-    onesC=probemode.onesC;
-    onesS=probemode.onesS;
-    cumprior=probemode.cumprior;
-    nc=probemode.nc;
-    cnc=probemode.cnc;
     stochsamples=probemode.stochsamples;
     stocheck=probemode.stocheck;
     stocheckfull=probemode.stocheckfull;
@@ -240,6 +236,7 @@ if exist('probemode','var'),
   verbose=false;
   epsilon=0;
   probemode=true;
+  xxsd=ones(DD,1);
 else
   probemode=false;
 end
@@ -255,25 +252,11 @@ elseif nargin-size(varargin,2)~=minargs,
 elseif size(B0,1)~=D || size(P0,1)~=D,
   fprintf(logfile,'%s error: dimensionality of base, prototypes and data must be the same\n',fn);
   return;
-elseif max(size(Xlabels))~=Nx || min(size(Xlabels))~=1 || ...
-       max(size(Plabels))~=Np || min(size(Plabels))~=1,
-  fprintf(logfile,'%s error: labels must have the same size as the number of data points\n',fn);
+elseif size(XX,2)~=Nx || size(PP0,2)~=Np,
+  fprintf(logfile,'%s error: the number of vectors in the dependent and independent data must be the same\n',fn);
   return;
-elseif max(size(unique(Xlabels)))~=C || ...
-       sum(unique(Xlabels)~=unique(Plabels))~=0,
-  fprintf(logfile,'%s error: there must be the same classes in labels and at least one prototype per class\n',fn);
-  return;
-elseif devel,
-  if max(size(Ylabels))~=Ny || min(size(Ylabels))~=1,
-    fprintf(logfile,'%s error: labels must have the same size as the number of data points\n',fn);
-    return;
-  elseif max(size(unique(Ylabels)))~=C || ...
-         sum(unique(Ylabels)~=unique(Plabels))~=0,
-    fprintf(logfile,'%s error: there must be the same classes in labels and at least one prototype per class\n',fn);
-    return;
-  end
-elseif exist('prior','var') && max(size(prior))~=C,
-  fprintf(logfile,'%s error: the size of prior must be the same as the number of classes\n',fn);
+elseif size(PP0,1)~=DD,
+  fprintf(logfile,'%s error: the dimensionality of the dependent variables for the data and the prototypes must be the same\n',fn);
   return;
 end
 
@@ -293,9 +276,11 @@ if ~probemode,
   onesNx=ones(Nx,1);
   onesNp=ones(Np,1);
   onesR=ones(R,1);
+  onesDD=ones(DD,1);
   if devel,
     onesNy=ones(Ny,1);
   end
+  mindist=100*sqrt(1/realmax);
 
   %%% Normalization %%%
   if normalize || linearnorm,
@@ -350,59 +335,19 @@ if ~probemode,
     B0=IW*B0;
   end
 
-  %%% Adjusting the labels to be between 1 and C %%%
-  clab=unique(Plabels);
-  if clab(1)~=1 || clab(end)~=C || max(size(clab))~=C,
-    nPlabels=ones(size(Plabels));
-    nXlabels=ones(size(Xlabels));
-    if devel,
-      nYlabels=ones(size(Ylabels));
-    end
-    for c=2:C,
-      nPlabels(Plabels==clab(c))=c;
-      nXlabels(Xlabels==clab(c))=c;
-      if devel,
-        nYlabels(Ylabels==clab(c))=c;
-      end
-    end
-    Plabels=nPlabels;
-    Xlabels=nXlabels;
-    if devel,
-      Ylabels=nYlabels;
-    end
+  xxmu=mean(XX,2);
+  xxsd=std(XX,1,2);
+  XX=(XX-xxmu(:,onesNx))./xxsd(:,onesNx);
+  if devel,
+    YY=(YY-xxmu(:,onesNy))./xxsd(:,onesNy);
   end
-  clear clab nPlabels nXlabels nYlabels;
-
-  if ~exist('prior','var'),
-    prior=ones(C,1);
-    for c=1:C,
-      prior(c)=sum(Xlabels==c)/Nx;
-    end
-  end
-
-  jfact=1;
-  cfact=zeros(Nx,1);
-  for c=1:C,
-    cfact(Xlabels==c)=prior(c)/sum(Xlabels==c);
-  end
-  if euclidean,
-    cfact=2*cfact;
-    jfact=0.5;
+  PP0=(PP0-xxmu(:,onesNp))./xxsd(:,onesNp);
+  if ~MAD,
+    xxsd=xxsd.*xxsd;
   end
 
   %%% Stochastic preprocessing %%%
   if stochastic,
-    [Xlabels,srt]=sort(Xlabels);
-    X=X(:,srt);
-    clear srt;
-    cumprior=cumsum(prior);
-    nc=zeros(C,1);
-    cnc=zeros(C,1);
-    nc(1)=sum(Xlabels==1);
-    for c=2:C,
-      nc(c)=sum(Xlabels==c);
-      cnc(c)=cnc(c-1)+nc(c-1);
-    end
     if exist('seed','var'),
       rand('state',seed);
     end
@@ -410,7 +355,6 @@ if ~probemode,
     minI=minI*stocheck;
     maxI=maxI*stocheck;
     stats=stats*stocheck;
-    onesC=ones(C,1);
   end
 
   %%% Initial parameter constraints %%%
@@ -421,39 +365,38 @@ if ~probemode,
   end
 
   %%% Constant data structures %%%
-  ind1=[1:Nx]';
-  ind1=ind1(:,onesNp);
+  ind1=1:Np;
+  ind1=ind1(onesNx,:);
   ind1=ind1(:);
 
-  ind2=1:Np;
+  ind2=1:DD;
   ind2=ind2(onesNx,:);
   ind2=ind2(:);
-
-  sel=Plabels(:,onesNx)'==Xlabels(:,onesNp);
 
   work.slope=slope;
   work.ind1=ind1;
   work.ind2=ind2;
-  work.sel=sel;
   work.onesR=onesR;
+  work.onesDD=onesDD;
+  work.xxsd=xxsd;
+  work.mindist=mindist;
   work.Np=Np;
   work.Nx=Nx;
-  work.C=C;
   work.R=R;
+  work.DD=DD;
+  work.NxDD=Nx*DD;
   work.euclidean=euclidean;
-  work.cfact=cfact;
-  work.jfact=jfact;
-  work.prior=prior;
+  work.indepPP=indepPP;
+  work.MAD=MAD;
 
   if stochastic,
     onesS=ones(stochsamples,1);
-    overS=1/stochsamples;
 
-    ind1=[1:stochsamples]';
-    ind1=ind1(:,onesNp);
+    ind1=1:Np;
+    ind1=ind1(onesS,:);
     ind1=ind1(:);
 
-    ind2=1:Np;
+    ind2=1:DD;
     ind2=ind2(onesS,:);
     ind2=ind2(:);
 
@@ -461,51 +404,63 @@ if ~probemode,
     swork.ind1=ind1;
     swork.ind2=ind2;
     swork.onesR=onesR;
-    swork.onesS=onesS;
-    swork.overS=overS;
     swork.onesNp=onesNp;
+    swork.onesDD=onesDD;
+    swork.xxsd=xxsd;
+    swork.mindist=mindist;
     swork.Np=Np;
     swork.Nx=stochsamples;
-    swork.C=C;
     swork.R=R;
+    swork.DD=DD;
+    swork.NxDD=stochsamples*DD;
     swork.euclidean=euclidean;
+    swork.indepPP=indepPP;
+    swork.MAD=MAD;
   end
 
   if devel,
-    ind1=[1:Ny]';
-    ind1=ind1(:,onesNp);
+    ind1=1:Np;
+    ind1=ind1(onesNy,:);
     ind1=ind1(:);
 
-    ind2=1:Np;
+    ind2=1:DD;
     ind2=ind2(onesNy,:);
     ind2=ind2(:);
-
-    sel=Plabels(:,onesNy)'==Ylabels(:,onesNp);
 
     dwork.slope=slope;
     dwork.ind1=ind1;
     dwork.ind2=ind2;
-    dwork.sel=sel;
     dwork.onesR=onesR;
+    dwork.onesDD=onesDD;
+    dwork.xxsd=xxsd;
+    dwork.mindist=mindist;
     dwork.Np=Np;
     dwork.Nx=Ny;
-    dwork.C=C;
     dwork.R=R;
+    dwork.DD=DD;
+    dwork.NxDD=Ny*DD;
     dwork.euclidean=euclidean;
-    dwork.prior=prior;
+    dwork.indepPP=indepPP;
+    dwork.MAD=MAD;
   end
 
   clear onesNx onesNy;
-  clear ind1 ind2 sel;
+  clear ind1 ind2;
+
+  etype='RMSE';
+  if MAD,
+    etype='MAD';
+  end
 
   fprintf(logfile,'%s total preprocessing time (s): %f\n',fn,toc);
 end
 
 if autoprobe,
-  probe=[zeros(2,1),10.^[-4:4;-4:4]];
+  probe=[zeros(3,1),10.^[-4:4;-4:4;-4:4]];
 end
 if exist('probe','var'),
   tic;
+  probecfg.onesDD=onesDD;
   probecfg.onesR=onesR;
   probecfg.minI=round(probeunstable*probeI);
   probecfg.maxI=probeI;
@@ -519,15 +474,10 @@ if exist('probe','var'),
   if devel,
     probecfg.dwork=dwork;
     probecfg.Y=Y;
-    probecfg.Ylabels=Ylabels;
+    probecfg.YY=YY;
   end
   if stochastic,
     probecfg.swork=swork;
-    probecfg.onesC=onesC;
-    probecfg.onesS=onesS;
-    probecfg.cumprior=cumprior;
-    probecfg.nc=nc;
-    probecfg.cnc=cnc;
     probecfg.stochsamples=stochsamples;
     probecfg.stocheck=stocheck;
     probecfg.stocheckfull=stocheckfull;
@@ -536,51 +486,72 @@ if exist('probe','var'),
   bestIJE=[0,1];
   ratesB=unique(probe(1,probe(1,:)>=0));
   ratesP=unique(probe(2,probe(2,:)>=0));
+  ratesPP=unique(probe(3,probe(3,:)>=0));
   nB=1;
   while nB<=size(ratesB,2),
     nP=1;
     while nP<=size(ratesP,2),
-      if ~(ratesB(nB)==0 && ratesP(nP)==0),
-        probecfg.rateB=ratesB(nB);
-        probecfg.rateP=ratesP(nP);
-        [I,J]=ldpp(X,Xlabels,B0,P0,Plabels,'probemode',probecfg);
-        mark='';
-        if I>bestIJE(1) || (I==bestIJE(1) && J<bestIJE(2)),
-          bestIJE=[I,J];
-          rateB=ratesB(nB);
-          rateP=ratesP(nP);
-          mark=' +';
-        end
-        if I<probeunstable*probeI,
-          if nP==1,
-            nB=size(ratesB,2)+1;
+      nPP=1;
+      while nPP<=size(ratesPP,2),
+        if ~(ratesB(nB)==0 && ratesP(nP)==0 && ratesPP(nPP)==0),
+          probecfg.rateB=ratesB(nB);
+          probecfg.rateP=ratesP(nP);
+          probecfg.ratePP=ratesPP(nPP);
+          [I,J]=ldppr(X,XX,B0,P0,PP0,'probemode',probecfg);
+          mark='';
+          if I>bestIJE(1) || (I==bestIJE(1) && J<bestIJE(2)),
+            bestIJE=[I,J];
+            rateB=ratesB(nB);
+            rateP=ratesP(nP);
+            ratePP=ratesPP(nPP);
+            mark=' +';
           end
-          break;
+          if I<probeunstable*probeI,
+            if nPP==1,
+              if nP==1,
+                nB=size(ratesB,2)+1;
+              end
+              nP=size(ratesP,2)+1;
+            end
+            break;
+          end
+          fprintf(logfile,'%s rates={%.2E %.2E %.2E} => impI=%.2f J=%.4f%s\n',fn,ratesB(nB),ratesP(nP),ratesPP(nPP),I/probeI,J,mark);
         end
-        fprintf(logfile,'%s rates={%.2E %.2E} => impI=%.2f J=%.4f%s\n',fn,ratesB(nB),ratesP(nP),I/probeI,J,mark);
+        nPP=nPP+1;
       end
       nP=nP+1;
     end
     nB=nB+1;
   end
   fprintf(logfile,'%s total probe time (s): %f\n',fn,toc);
-  fprintf(logfile,'%s selected rates={%.2E %.2E} impI=%.2f J=%.4f\n',fn,rateB,rateP,bestIJE(1)/probeI,bestIJE(2));
+  fprintf(logfile,'%s selected rates={%.2E %.2E %.2E} impI=%.2f J=%.4f\n',fn,rateB,rateP,ratePP,bestIJE(1)/probeI,bestIJE(2));
 end
+
+if euclidean,
+  rateB=2*rateB;
+  rateP=2*rateP;
+  ratePP=2*ratePP;
+end
+slope=slope/DD;
+rateB=2*rateB*slope/Nx;
+rateP=2*rateP*slope/Nx;
+ratePP=2*ratePP*slope/Nx;
 
 Bi=B0;
 Pi=P0;
+PPi=PP0;
 bestB=B0;
 bestP=P0;
-bestIJE=[0 1 1 -1];
+bestPP=PP0;
+bestIJE=[0 1 Inf -1];
 
 J00=1;
 J0=1;
 I=0;
 
-fprintf(logfile,'%s D=%d C=%d R=%d Nx=%d\n',fn,D,C,R,Nx);
-fprintf(logfile,'%s output: iteration | J | delta(J) | E\n',fn);
-
 if ~probemode,
+  fprintf(logfile,'%s Dx=%d Dxx=%d R=%d Nx=%d\n',fn,D,DD,R,Nx);
+  fprintf(logfile,'%s output: iteration | J | delta(J) | %s\n',fn,etype);
   tic;
 end
 
@@ -590,9 +561,10 @@ if ~stochastic,
   while true,
 
     %%% Compute statistics %%%
-    [E,J,fX,fP]=ldpp_index(Bi'*Pi,Plabels,Bi'*X,Xlabels,work);
+    rP=Bi'*Pi;
+    [E,J,fX,fP,fPP]=ldppr_index(rP,PPi,Bi'*X,XX,work);
     if devel,
-      E=ldpp_index(Bi'*Pi,Plabels,Bi'*Y,Ylabels,dwork);
+      E=ldppr_index(rP,PPi,Bi'*Y,YY,dwork);
     end
 
     %%% Determine if there was improvement %%%
@@ -601,6 +573,7 @@ if ~stochastic,
        ( ~testJ && (E<bestIJE(3)||(E==bestIJE(3)&&J<=bestIJE(2))) ),
       bestB=Bi;
       bestP=Pi;
+      bestPP=PPi;
       bestIJE=[I J E bestIJE(4)+1];
       mark=' *';
     end
@@ -635,6 +608,23 @@ if ~stochastic,
     %%% Update parameters %%%
     Bi=Bi-rateB.*(X*fX'+Pi*fP');
     Pi=Pi-rateP.*(Bi*fP);
+    if indepPP,
+      PPi=PPi-ratePP.*fPP;
+    else
+      PPi=PPi-ratePP.*fPP(onesDD,:);
+    end
+
+    %if mod(I,3)==0,
+    %  Bi=Bi-rateB.*(X*fX'+Pi*fP');
+    %elseif mod(I+1,3)==0,
+    %  Pi=Pi-rateP.*(Bi*fP);
+    %else
+    %  if indepPP,
+    %    PPi=PPi-ratePP.*fPP;
+    %  else
+    %    PPi=PPi-ratePP.*fPP(onesDD,:);
+    %  end
+    %end
 
     %%% Parameter constraints %%%
     if mod(I,orthoit)==0,
@@ -651,26 +641,29 @@ if ~stochastic,
 else
 
   prevJ=1;
-  prevE=1;
+  if devel,
+    prevE=ldppr_index(Bi'*Pi,PPi,Bi'*Y,YY,dwork);
+  else
+    prevE=ldppr_index(Bi'*Pi,PPi,Bi'*X,XX,work);
+  end
 
   while true,
 
     %%% Compute statistics %%%
     if mod(I,stocheck)==0 && stocheckfull,
-      [E,J]=ldpp_index(Bi'*Pi,Plabels,Bi'*X,Xlabels,work);
+      rP=Bi'*Pi;
+      [E,J]=ldppr_index(rP,PPi,Bi'*X,XX,work);
       if devel,
-        E=ldpp_index(Bi'*Pi,Plabels,Bi'*Y,Ylabels,dwork);
+        E=ldppr_index(rP,PPi,Bi'*Y,YY,dwork);
       end
     end
 
     %%% Select random samples %%%
-    rands=rand(1,stochsamples);
-    randc=(sum(rands(onesC,:)>cumprior(:,onesS))+1)';
-    randn=cnc(randc)+round((nc(randc)-1).*rand(stochsamples,1))+1;
+    randn=round((Nx-1).*rand(stochsamples,1))+1; % modify for no repetitions
     sX=X(:,randn);
 
     %%% Compute statistics %%%
-    [Ei,Ji,fX,fP]=ldpp_sindex(Bi'*Pi,Plabels,Bi'*sX,randc,swork);
+    [Ei,Ji,fX,fP,fPP]=ldppr_sindex(Bi'*Pi,PPi,Bi'*sX,XX(:,randn),swork);
     if ~stocheckfull,
       J=0.5*(prevJ+Ji);
       prevJ=J;
@@ -682,7 +675,7 @@ else
 
     if mod(I,stocheck)==0,
       if ~stocheckfull && devel,
-        E=ldpp_index(Bi'*Pi,Plabels,Bi'*Y,Ylabels,dwork);
+        E=ldppr_index(Bi'*Pi,PPi,Bi'*Y,YY,dwork);
       end
 
       %%% Determine if there was improvement %%%
@@ -691,6 +684,7 @@ else
          ( ~testJ && (E<bestIJE(3)||(E==bestIJE(3)&&J<=bestIJE(2))) ),
         bestB=Bi;
         bestP=Pi;
+        bestPP=PPi;
         bestIJE=[I J E bestIJE(4)+1];
         mark=' *';
       end
@@ -727,6 +721,11 @@ else
     %%% Update parameters %%%
     Bi=Bi-rateB.*(sX*fX'+Pi*fP');
     Pi=Pi-rateP.*(Bi*fP);
+    if indepPP,
+      PPi=PPi-ratePP.*fPP;
+    else
+      PPi=PPi-ratePP.*fPP(onesDD,:);
+    end
 
     %%% Parameter constraints %%%
     if mod(I,orthoit)==0,
@@ -748,9 +747,9 @@ else
 
   %%% Compute final statistics %%%
   if stochfinalexact && ~stocheckfull,
-    [E,J]=ldpp_index(bestB'*bestP,Plabels,bestB'*X,Xlabels,work);
+    [E,J]=ldppr_index(bestB'*bestP,bestPP,bestB'*X,XX,work);
     if devel,
-      E=ldpp_index(bestB'*bestP,Plabels,bestB'*Y,Ylabels,dwork);
+      E=ldpp_index(bestB'*bestP,bestPP,bestB'*Y,YY,dwork);
     end
 
     fprintf(logfile,'%s best iteration approx: I=%d J=%f E=%f\n',fn,bestIJE(1),bestIJE(2),bestIJE(3));
@@ -779,6 +778,10 @@ if probemode,
 end
 
 %%% Compensate for normalization in the final parameters %%%
+if ~MAD,
+  xxsd=sqrt(xxsd);
+end
+bestPP=bestPP.*xxsd(:,onesNp)+xxmu(:,onesNp);
 if normalize || linearnorm,
   if issparse(X) && ~cosine,
     bestP=bestP.*xsd(xsd~=0,onesNp);
@@ -805,133 +808,124 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [E, J, fX, fP] = ldpp_index(P, Plabels, X, Xlabels, work)
+function [E, J, fX, fP, fPP] = ldppr_index(rP, PP, rX, XX, work)
 
   R=work.R;
+  DD=work.DD;
   Np=work.Np;
   Nx=work.Nx;
   onesR=work.onesR;
-  sel=work.sel;
-  prior=work.prior;
+  onesDD=work.onesDD;
+  mindist=work.mindist;
+  ind1=work.ind1;
+  ind2=work.ind2;
 
   %%% Compute distances %%%
   if work.euclidean,
-    ds=reshape(sum((X(:,work.ind1)-P(:,work.ind2)).^2,1),Nx,Np);
+    dist=sum(power(repmat(rX,1,Np)-rP(:,ind1),2),1);
   else %elseif cosine,
-    psd=sqrt(sum(P.*P,1));
-    P=P./psd(onesR,:);
-    xsd=sqrt(sum(X.*X,1));
-    X=X./xsd(onesR,:);
-    ds=reshape(1-sum(X(:,work.ind1).*P(:,work.ind2),1),Nx,Np);
+    rpsd=sqrt(sum(rP.*rP,1));
+    rP=rP./rpsd(onesR,:);
+    rxsd=sqrt(sum(rX.*rX,1));
+    rX=rX./rxsd(onesR,:);
+    dist=1-sum(repmat(rX,1,Np).*rP(:,ind1),1);
   end
+  dist(dist<mindist)=mindist;
+  dist=reshape(1./dist,Nx,Np);
 
-  dd=ds;
-  ds(~sel)=inf;
-  dd(sel)=inf;
-  [ds,is]=min(ds,[],2);
-  [dd,id]=min(dd,[],2);
-  ds(ds==0)=realmin;
-  dd(dd==0)=realmin;
+  S=sum(dist,2);
+  mXX=(reshape(sum(repmat(dist,DD,1).*PP(ind2,:),2),Nx,DD)./S(:,onesDD))';
+  dXX=mXX-XX;
 
   %%% Compute statistics %%%
-  E=0;
-  for c=1:work.C,
-    E=E+prior(c)*sum(dd(Xlabels==c)<ds(Xlabels==c))/sum(Xlabels==c);
+  if work.MAD;
+    E=sum(sum(abs(dXX),2).*work.xxsd)/work.NxDD;
+  else
+    E=sqrt(sum(sum(dXX.*dXX,2).*work.xxsd)/work.NxDD);
   end
   if nargout>1,
-    ratio=ds./dd;
-    expon=exp(work.slope*(1-ratio));
-    sigm=1./(1+expon);
-    J=work.jfact*sum(work.cfact.*sigm);
+    tanhXX=tanh(work.slope*sum(dXX.*dXX,1))';
+    J=sum(tanhXX)/Nx;
   end
 
   %%% Compute gradient %%%
   if nargout>2,
-    dsigm=work.slope.*expon./((1+expon).*(1+expon));
-    ratio=work.cfact.*ratio;
-    dfact=ratio.*dsigm;
-    sfact=dfact./ds;
-    dfact=dfact./dd;
-
-    fP=zeros(R,Np);
+    dist=dist.*dist;
+    fact=repmat((1-tanhXX.*tanhXX)./S,Np,1).*dist(:);
+    if work.indepPP,
+      fPP=permute(sum(reshape(fact(:,onesDD).*repmat(dXX,1,Np)',Nx,Np,DD)),[3 2 1]);
+    else
+      fPP=sum(reshape(fact.*sum(repmat(dXX,1,Np),1)',Nx,Np),1);
+    end
+    fact=fact.*sum(repmat(dXX,1,Np).*(repmat(mXX,1,Np)-PP(:,ind1)),1)';
 
     if work.euclidean,
-      Xs=(X-P(:,is)).*sfact(:,onesR)';
-      Xd=(X-P(:,id)).*dfact(:,onesR)';
-      fX=Xs-Xd;
-      for m=1:Np,
-        fP(:,m)=-sum(Xs(:,is==m),2)+sum(Xd(:,id==m),2);
-      end
+      fact=reshape(fact(:,onesR)'.*(repmat(rX,1,Np)-rP(:,ind1)),[R Nx Np]);
+      fP=-permute(sum(fact,2),[1 3 2]);
+      fX=sum(fact,3);
     else %elseif cosine,
-      Xs=X.*sfact(:,onesR)';
-      Xd=X.*dfact(:,onesR)';
-      fX=P(:,id).*dfact(:,onesR)'-P(:,is).*sfact(:,onesR)';
-      for m=1:Np,
-        fP(:,m)=-sum(Xs(:,is==m),2)+sum(Xd(:,id==m),2);
-      end
+      fP=-permute(sum(reshape(fact(:,onesR)'.*repmat(rX,1,Np),[R Nx Np]),2),[1 3 2]);
+      fX=-sum(reshape(fact(:,onesR)'.*rP(:,ind1),[R Nx Np]),3);
     end
   end
 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [E, J, fX, fP] = ldpp_sindex(P, Plabels, X, Xlabels, work)
+function [E, J, fX, fP, fPP] = ldppr_sindex(rP, PP, rX, XX, work)
 
   R=work.R;
+  DD=work.DD;
   Np=work.Np;
   Nx=work.Nx;
   onesR=work.onesR;
-  slope=work.slope;
-  overS=work.overS;
+  onesDD=work.onesDD;
+  mindist=work.mindist;
+  ind1=work.ind1;
+  ind2=work.ind2;
 
   %%% Compute distances %%%
   if work.euclidean,
-    ds=reshape(sum((X(:,work.ind1)-P(:,work.ind2)).^2,1),Nx,Np);
+    dist=sum(power(repmat(rX,1,Np)-rP(:,ind1),2),1);
   else %elseif cosine,
-    psd=sqrt(sum(P.*P,1));
-    P=P./psd(onesR,:);
-    xsd=sqrt(sum(X.*X,1));
-    X=X./xsd(onesR,:);
-    ds=reshape(1-sum(X(:,work.ind1).*P(:,work.ind2),1),Nx,Np);
+    rpsd=sqrt(sum(rP.*rP,1));
+    rP=rP./rpsd(onesR,:);
+    rxsd=sqrt(sum(rX.*rX,1));
+    rX=rX./rxsd(onesR,:);
+    dist=1-sum(repmat(rX,1,Np).*rP(:,ind1),1);
   end
+  dist(dist<mindist)=mindist;
+  dist=reshape(1./dist,Nx,Np);
 
-  dd=ds;
-  ssel=Plabels(:,work.onesS)'==Xlabels(:,work.onesNp);
-  ds(~ssel)=inf;
-  dd(ssel)=inf;
-  [ds,is]=min(ds,[],2);
-  [dd,id]=min(dd,[],2);
-  ds(ds==0)=realmin;
-  dd(dd==0)=realmin;
-  ratio=ds./dd;
-  expon=exp(slope*(1-ratio));
-  sigm=1./(1+expon);
+  S=sum(dist,2);
+  mXX=(reshape(sum(repmat(dist,DD,1).*PP(ind2,:),2),Nx,DD)./S(:,onesDD))';
+  dXX=mXX-XX;
+  tanhXX=tanh(work.slope*sum(dXX.*dXX,1))';
 
   %%% Compute statistics %%%
-  J=overS*sum(sigm);
-  E=overS*sum(dd<ds);
+  if work.MAD;
+    E=sum(sum(abs(dXX),2).*work.xxsd)/work.NxDD;
+  else
+    E=sqrt(sum(sum(dXX.*dXX,2).*work.xxsd)/work.NxDD);
+  end
+  J=sum(tanhXX)/Nx;
 
   %%% Compute gradient %%%
-  dsigm=slope.*expon./((1+expon).*(1+expon));
-  ratio=overS.*ratio;
-  dfact=ratio.*dsigm;
-  sfact=dfact./ds;
-  dfact=dfact./dd;
-
-  fP=zeros(R,Np);
+  dist=dist.*dist;
+  fact=repmat((1-tanhXX.*tanhXX)./S,Np,1).*dist(:);
+  if work.indepPP,
+    fPP=permute(sum(reshape(fact(:,onesDD).*repmat(dXX,1,Np)',Nx,Np,DD)),[3 2 1]);
+  else
+    fPP=sum(reshape(fact.*sum(repmat(dXX,1,Np),1)',Nx,Np),1);
+  end
+  fact=fact.*sum(repmat(dXX,1,Np).*(repmat(mXX,1,Np)-PP(:,ind1)),1)';
 
   if work.euclidean,
-    Xs=(X-P(:,is)).*sfact(:,onesR)';
-    Xd=(X-P(:,id)).*dfact(:,onesR)';
-    fX=Xs-Xd;
-    for m=1:Np,
-      fP(:,m)=-sum(Xs(:,is==m),2)+sum(Xd(:,id==m),2);
-    end
+    fact=reshape(fact(:,onesR)'.*(repmat(rX,1,Np)-rP(:,ind1)),[R Nx Np]);
+    fP=-permute(sum(fact,2),[1 3 2]);
+    fX=sum(fact,3);
   else %elseif cosine,
-    Xs=X.*sfact(:,onesR)';
-    Xd=X.*dfact(:,onesR)';
-    fX=P(:,id).*dfact(:,onesR)'-P(:,is).*sfact(:,onesR)';
-    for m=1:Np,
-      fP(:,m)=-sum(Xs(:,is==m),2)+sum(Xd(:,id==m),2);
-    end
+    fP=-permute(sum(reshape(fact(:,onesR)'.*repmat(rX,1,Np),[R Nx Np]),2),[1 3 2]);
+    fX=-sum(reshape(fact(:,onesR)'.*rP(:,ind1),[R Nx Np]),3);
   end
 
 
