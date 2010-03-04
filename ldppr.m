@@ -46,8 +46,8 @@ function [bestB, bestP, bestPP] = ldppr(X, XX, B0, P0, PP0, varargin)
 %   P       - Final learned independent prototype data
 %   PP      - Final learned dependent prototype data
 %
-% $Revision: 70 $
-% $Date: 2009-10-19 09:34:45 +0200 (Mon, 19 Oct 2009) $
+% $Revision$
+% $Date$
 %
 
 %
@@ -68,7 +68,7 @@ function [bestB, bestP, bestPP] = ldppr(X, XX, B0, P0, PP0, varargin)
 %
 
 if strncmp(X,'-v',2),
-  unix('echo "$Revision: 70 $* $Date: 2009-10-19 09:34:45 +0200 (Mon, 19 Oct 2009) $*" | sed "s/^:/ldppr: revision/g; s/ : /[/g; s/ (.*)/]/g;"');
+  unix('echo "$Revision$* $Date$*" | sed "s/^:/ldppr: revision/g; s/ : /[/g; s/ (.*)/]/g;"');
   return;
 end
 

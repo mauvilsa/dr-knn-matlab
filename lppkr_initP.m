@@ -2,7 +2,7 @@ function [P0, PP] = lppkr_initP(X, XX, M, varargin)
 %
 % LPPKR_INITP: Initialize Prototypes for LPPKR
 %
-% P0 = lppkr_initP(X, XX, M)
+% [P0, PP0] = lppkr_initP(X, XX, M)
 %
 %   Input:
 %     X       - Independent data matrix. Each column vector is a data point.
@@ -16,7 +16,7 @@ function [P0, PP] = lppkr_initP(X, XX, M, varargin)
 %
 %   Output:
 %     P0      - Initialized prototypes. Independent data.
-%     P0      - Initialized prototypes. Dependent data.
+%     PP0     - Initialized prototypes. Dependent data.
 %
 %
 % Version: 1.01 -- Sep/2009
@@ -89,11 +89,11 @@ else
     M=M/multi;
   end
 
-  d=(mx-mn)/(M-1);
-
   rand('state',seed);
 
   if DD==1,
+
+    d=(mx-mn)/(M-1);
 
     P0=[];
     PP=[];
@@ -110,8 +110,36 @@ else
       PP=[PP,m*ones(1,multi)];
     end
 
+  elseif DD==2,
+
+    M=round(sqrt(M));
+    d=(mx-mn)/(M-1);
+
+    P0=[];
+    PP=[];
+    Nx=size(XX,2);
+    onesNx=ones(Nx,1);
+
+    for m=mn(1):d(1):mx(1),
+      sm=XX(1,:)>=m-d(1)/2 & XX(1,:)<m+d(1)/2;
+      for n=mn(2):d(2):mx(2),
+        sn=XX(2,:)>=n-d(2)/2 & XX(2,:)<n+d(2)/2;
+        s=sm&sn;
+        if sum(s)>multi,
+          P0=[P0,kmeans(X(:,s),multi,'seed',seed)];
+          seed=rand('state');
+        else
+          mu=[m;n];
+          mdist=sum((XX-mu(:,onesNx)).^2,1);
+          [mdist,idx]=sort(mdist);
+          P0=[P0,X(:,idx(1:multi))];
+        end
+        PP=[PP,[m;n]*ones(1,multi)];
+      end
+    end
+  
   else
-    fprintf(2,'lppkr_initP: error: dimensionality of dependent data higher than one, not implemented yet\n');
+    fprintf(2,'lppkr_initP: error: dimensionality of dependent data higher than two, not implemented yet\n');
 %    dd=1,
 %    for m=mn(dd):(mx(dd)-mn(dd))/(M-1):mx(dd),
   end
