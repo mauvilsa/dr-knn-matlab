@@ -1,4 +1,4 @@
-function [E, A, S] = classify_nn(P, Plabels, X, Xlabels, varargin)
+function [E, A, S, cdist] = classify_nn(P, Plabels, X, Xlabels, varargin)
 %
 % CLASSIFY_NN: Classify using Nearest Neighbor
 %
@@ -167,6 +167,9 @@ if sum(size(Xlabels))~=0,
   end
 end
 
+if nargout>3,
+  cdist=dist;
+end
 if nargout>2,
   dist(Nx*(A-1)+[1:Nx]')=inf;
   d2=min(dist,[],2);

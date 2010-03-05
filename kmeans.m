@@ -42,9 +42,15 @@ function [mu, ind] = kmeans(X, K, varargin)
 
 if K==1,
   mu=mean(X,2);
+  if nargout>1,
+    ind=ones(N,1);
+  end
   return;
 elseif K==N,
   mu=X;
+  if nargout>1,
+    ind=[1:N]';
+  end
   return;
 end
 
