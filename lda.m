@@ -36,7 +36,6 @@ function B = lda(X, Xlabels, varargin)
 %
 
 dopca=false;
-dimpca=0;
 
 n=1;
 argerr=false;
@@ -68,16 +67,16 @@ else
 
   if dopca;
     Bpca=pca(X);
-    Bpca=Bpca(:,1:dimpca);
+    Bpca=Bpca(:,1:dopca);
     mu=mean(X,2);
     X=X-repmat(mu,1,N);
     X=Bpca'*X;
-    D=dimpca;
+    D=dopca;
   end
 
   Clabels=unique(Xlabels)';
   C=size(Clabels,2);
-  
+
   mu=mean(X,2);
   SB=zeros(D);
   SW=zeros(D);
