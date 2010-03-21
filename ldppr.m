@@ -2,7 +2,11 @@ function [bestB, bestP, bestPP] = ldppr(X, XX, B0, P0, PP0, varargin)
 %
 % LDPPR: Learning Discriminative Projections and Prototypes for Regression
 %
-% [B, P, PP] = ldppr(X, XX, B0, P0, PP0, ...)
+% Usage:
+%   [B, P, PP] = ldppr(X, XX, B0, P0, PP0, ...)
+%
+% Usage cross-validation (PCA & kmeans initialization):
+%   [B, P, PP] = ldppr(X, XX, maxDr, maxNp, [], ...)
 %
 % Input:
 %   X       - Independent training data. Each column vector is a data point.
@@ -10,48 +14,65 @@ function [bestB, bestP, bestPP] = ldppr(X, XX, B0, P0, PP0, varargin)
 %   B0      - Initial projection base.
 %   P0      - Initial independent prototype data.
 %   PP0     - Initial dependent prototype data.
+%   maxDr   - Maximum reduced dimensionality.
+%   maxNp   - Maximum number of prototypes.
 %
-% Input (optional):
+% Output:
+%   B       - Final learned projection base.
+%   P       - Final learned independent prototype data.
+%   PP      - Final learned dependent prototype data.
+%
+% Learning options:
 %   'slope',SLOPE              - Tanh slope (default=1)
 %   'rateB',RATEB              - Projection base learning rate (default=0.1)
 %   'rateP',RATEP              - Ind. Prototypes learning rate (default=0.1)
 %   'ratePP',RATEPP            - Dep. Prototypes learning rate (default=0)
-%   'epsilon',EPSILON          - Convergence criteria (default=1e-7)
 %   'minI',MINI                - Minimum number of iterations (default=100)
 %   'maxI',MAXI                - Maximum number of iterations (default=1000)
-%   'stats',STAT               - Statistics every STAT (default=1)
-%   'probe',PROBE              - Probe learning rates (default=false)
-%   'probeI',PROBEI            - Iterations for probing (default=100)
-%   'autoprobe',(true|false)   - Automatic probing (default=false)
-%   'devel',Y,Ylabels          - Set the development set (default=false)
-%   'seed',SEED                - Random seed (default=system)
-%   'stochastic',(true|false)  - Stochastic gradient descend (default=true)
-%   'stochsamples',SAMP        - Samples per stochastic iteration (default=1)
-%   'stocheck',SIT             - Stats every SIT stoch. iterations (default=100)
-%   'stocheckfull',(true|f...  - Stats for whole data set (default=false)
-%   'stochfinalexact',(tru...  - Final stats for whole data set (default=true)
+%   'epsilon',EPSILON          - Convergence criteria (default=1e-7)
 %   'orthoit',OIT              - Orthogonalize every OIT (default=1)
 %   'orthonormal',(true|false) - Orthonormal projection base (default=true)
 %   'orthogonal',(true|false)  - Orthogonal projection base (default=false)
 %   'euclidean',(true|false)   - Euclidean distance (default=true)
 %   'cosine',(true|false)      - Cosine distance (default=false)
+%
+% Data normalization options:
 %   'normalize',(true|false)   - Normalize training data (default=true)
 %   'linearnorm',(true|false)  - Linear normalize training data (default=false)
 %   'whiten',(true|false)      - Whiten training data (default=false)
-%   'logfile',FID              - Output log file (default=stderr)
-%   'verbose',(true|false)     - Verbose (default=true)
 %
-% Output:
-%   B       - Final learned projection base
-%   P       - Final learned independent prototype data
-%   PP      - Final learned dependent prototype data
+% Stochastic options:
+%   'stochastic',(true|false)  - Stochastic gradient descend (default=true)
+%   'stochsamples',SAMP        - Samples per stochastic iteration (default=10)
+%   'stocheck',SIT             - Stats every SIT stoch. iterations (default=100)
+%   'stocheckfull',(true|f...  - Stats for whole data set (default=false)
+%   'stochfinalexact',(tru...  - Final stats for whole data set (default=true)
+%
+% Verbosity options:
+%   'verbose',(true|false)     - Verbose (default=true)
+%   'stats',STAT               - Statistics every STAT (default=10)
+%   'logfile',FID              - Output log file (default=stderr)
+%
+% Other options:
+%   'devel',Y,Ylabels          - Set the development set (default=false)
+%   'seed',SEED                - Random seed (default=system)
+%
+% Cross-validation options:
+%   'crossvalidate',K          - Do K-fold cross-validation (default=2)
+%   'cv_slope',[SLOPES]        - Slopes to try (default=[10])
+%   'cv_Np',[NPs]              - Prototypes to try (default=[2.^[1:4]])
+%   'cv_Dr',[DRs]              - Reduced dimensions to try (default=[2.^[2:5]])
+%   'cv_rateB',[RATEBs]        - B learning rates to try (default=[10.^[-2:0]])
+%   'cv_rateP',[RATEPs]        - P learning rates to try (default=[10.^[-2:0]])
+%   'cv_save',(true|false)     - Save cross-validation results (default=false)
+%
 %
 % $Revision$
 % $Date$
 %
 
 %
-% Copyright (C) 2008-2009 Mauricio Villegas (mvillegas AT iti.upv.es)
+% Copyright (C) 2008-2010 Mauricio Villegas (mvillegas AT iti.upv.es)
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -94,19 +115,15 @@ rateB=0.1;
 rateP=0.1;
 ratePP=0;
 
-probeI=100;
-probeunstable=0.2;
-autoprobe=false;
-
 epsilon=1e-7;
 minI=100;
 maxI=1000;
-stats=1;
+stats=10;
 orthoit=1;
 
 devel=false;
 stochastic=false;
-stochsamples=1;
+stochsamples=10;
 stocheck=100;
 stocheckfull=false;
 stochfinalexact=true;
@@ -117,9 +134,11 @@ cosine=false;
 normalize=true;
 linearnorm=false;
 whiten=false;
-indepPP=false;
 testJ=false;
+indepPP=false;
 MAD=false;
+crossvalidate=false;
+cv_save=false;
 
 logfile=2;
 verbose=true;
@@ -142,12 +161,16 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'minI') || ...
          strcmp(varargin{n},'maxI') || ...
          strcmp(varargin{n},'stats') || ...
-         strcmp(varargin{n},'probe') || ...
-         strcmp(varargin{n},'probeI') || ...
          strcmp(varargin{n},'seed') || ...
          strcmp(varargin{n},'stochsamples') || ...
          strcmp(varargin{n},'stocheck') || ...
          strcmp(varargin{n},'orthoit') || ...
+         strcmp(varargin{n},'crossvalidate') || ...
+         strcmp(varargin{n},'cv_slope') || ...
+         strcmp(varargin{n},'cv_Np') || ...
+         strcmp(varargin{n},'cv_Dr') || ...
+         strcmp(varargin{n},'cv_rateB') || ...
+         strcmp(varargin{n},'cv_rateP') || ...
          strcmp(varargin{n},'logfile'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~isnumeric(varargin{n+1}) || sum(sum(varargin{n+1}<0))~=0,
@@ -165,9 +188,9 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'stochastic') || ...
          strcmp(varargin{n},'stocheckfull') || ...
          strcmp(varargin{n},'stochfinalexact') || ...
-         strcmp(varargin{n},'autoprobe') || ...
-         strcmp(varargin{n},'indepPP') || ...
          strcmp(varargin{n},'testJ') || ...
+         strcmp(varargin{n},'cv_save') || ...
+         strcmp(varargin{n},'indepPP') || ...
          strcmp(varargin{n},'MAD') || ...
          strcmp(varargin{n},'verbose'),
     eval([varargin{n},'=varargin{n+1};']);
@@ -208,12 +231,35 @@ end
 
 [D,Nx]=size(X);
 DD=size(XX,1);
-R=size(B0,2);
-Np=size(P0,2);
 if devel,
   Ny=size(Y,2);
 end
 
+%%% Automatic initial parameters %%%
+if ~crossvalidate && max(size(B0))==1 && max(size(P0))==1,
+  crossvalidate=2;
+end
+if max(size(B0))==1,
+  if ~crossvalidate,
+    Bi=pca(X);
+    B0=Bi(:,1:min(B0,D));
+  else
+    B0=rand(D,min(B0,D));
+  end
+end
+if max(size(P0))==1,
+  if ~crossvalidate,
+    [P0,PP0]=ldppr_initP(X,XX,P0);
+  else
+    PP0=zeros(1,P0);
+    P0=rand(D,P0);
+  end
+end
+
+Dr=size(B0,2);
+Np=size(P0,2);
+
+%%% Probe mode %%%
 if exist('probemode','var'),
   onesDD=probemode.onesDD;
   rateB=probemode.rateB;
@@ -221,14 +267,17 @@ if exist('probemode','var'),
   ratePP=probemode.ratePP;
   minI=probemode.minI;
   maxI=probemode.maxI;
-  probeunstable=minI;
+  epsilon=probemode.epsilon;
   stats=probemode.stats;
   orthoit=probemode.orthoit;
   orthonormal=probemode.orthonormal;
   orthogonal=probemode.orthogonal;
+  euclidean=probemode.euclidean;
+  testJ=probemode.testJ;
   stochastic=probemode.stochastic;
   devel=probemode.devel;
-  work=probemode.work;  
+  work=probemode.work;
+  logfile=probemode.logfile;
   if devel,
     dwork=probemode.dwork;
     Y=probemode.Y;
@@ -242,12 +291,35 @@ if exist('probemode','var'),
     stochfinalexact=probemode.stochfinalexact;
   end
   normalize=false;
-  verbose=false;
-  epsilon=0;
+  verbose=true;
   probemode=true;
   xxsd=ones(DD,1);
 else
   probemode=false;
+  if crossvalidate,
+    if ~exist('cv_slope','var'),
+      cv_slope=slope;
+    end
+    if ~exist('cv_Np','var'),
+      cv_Np=[2.^[1:4]];
+      cv_Np(cv_Np>=Np)=[];
+      cv_Np=[cv_Np,Np];
+    end
+    if ~exist('cv_Dr','var'),
+      cv_Dr=[2.^[2:5]];
+      cv_Dr(cv_Dr>=Dr)=[];
+      cv_Dr=[cv_Dr,Dr];
+    end
+    if ~exist('cv_rateB','var'),
+      cv_rateB=[10.^[-2:0]];
+    end
+    if ~exist('cv_rateP','var'),
+      cv_rateP=[10.^[-2:0]];
+    end
+    if ~exist('cv_ratePP','var'),
+      cv_ratePP=ratePP;
+    end
+  end
 end
 
 %%% Error detection %%%
@@ -277,6 +349,10 @@ end
 if ~probemode,
   tic;
 
+  if exist('seed','var'),
+    rand('state',seed);
+  end
+
   if exist('rates','var'),
     rateB=rates;
     rateP=rates;
@@ -284,7 +360,7 @@ if ~probemode,
 
   onesNx=ones(Nx,1);
   onesNp=ones(Np,1);
-  onesR=ones(R,1);
+  onesDr=ones(Dr,1);
   onesDD=ones(DD,1);
   if devel,
     onesNy=ones(Ny,1);
@@ -296,7 +372,7 @@ if ~probemode,
     xmu=mean(X,2);
     xsd=std(X,1,2);
     if euclidean,
-      xsd=R*xsd;
+      xsd=Dr*xsd;
     end
     if linearnorm,
       xsd=max(xsd)*ones(size(xsd));
@@ -316,7 +392,7 @@ if ~probemode,
       end
       P0=(P0-xmu(:,onesNp))./xsd(:,onesNp);
     end
-    B0=B0.*xsd(:,onesR);
+    B0=B0.*xsd(:,onesDr);
     if sum(xsd==0)>0,
       X(xsd==0,:)=[];
       if devel,
@@ -332,7 +408,7 @@ if ~probemode,
     V=V(V>eps);
     W=W.*repmat((1./sqrt(V))',D,1);
     if euclidean,
-      W=(1/R).*W;
+      W=(1/Dr).*W;
     end
     xmu=mean(X,2);
     X=W'*(X-xmu(:,onesNx));
@@ -357,9 +433,6 @@ if ~probemode,
 
   %%% Stochastic preprocessing %%%
   if stochastic,
-    if exist('seed','var'),
-      rand('state',seed);
-    end
     orthoit=orthoit*stocheck;
     minI=minI*stocheck;
     maxI=maxI*stocheck;
@@ -374,24 +447,15 @@ if ~probemode,
   end
 
   %%% Constant data structures %%%
-  ind1=1:Np;
-  ind1=ind1(onesNx,:);
-  ind1=ind1(:);
-
-  ind2=1:DD;
-  ind2=ind2(onesNx,:);
-  ind2=ind2(:);
-
+  [work.ind1,work.ind2]=comp_ind(DD,Np,Nx,onesNx);
   work.slope=slope;
-  work.ind1=ind1;
-  work.ind2=ind2;
-  work.onesR=onesR;
+  work.onesDr=onesDr;
   work.onesDD=onesDD;
   work.xxsd=xxsd;
   work.mindist=mindist;
   work.Np=Np;
   work.Nx=Nx;
-  work.R=R;
+  work.Dr=Dr;
   work.DD=DD;
   work.NxDD=Nx*DD;
   work.euclidean=euclidean;
@@ -399,62 +463,21 @@ if ~probemode,
   work.MAD=MAD;
 
   if stochastic,
+    swork=work;
     onesS=ones(stochsamples,1);
-
-    ind1=1:Np;
-    ind1=ind1(onesS,:);
-    ind1=ind1(:);
-
-    ind2=1:DD;
-    ind2=ind2(onesS,:);
-    ind2=ind2(:);
-
-    swork.slope=slope;
-    swork.ind1=ind1;
-    swork.ind2=ind2;
-    swork.onesR=onesR;
-    swork.onesNp=onesNp;
-    swork.onesDD=onesDD;
-    swork.xxsd=xxsd;
-    swork.mindist=mindist;
-    swork.Np=Np;
+    [swork.ind1,swork.ind2]=comp_ind(DD,Np,stochsamples,onesS);
     swork.Nx=stochsamples;
-    swork.R=R;
-    swork.DD=DD;
     swork.NxDD=stochsamples*DD;
-    swork.euclidean=euclidean;
-    swork.indepPP=indepPP;
-    swork.MAD=MAD;
   end
 
   if devel,
-    ind1=1:Np;
-    ind1=ind1(onesNy,:);
-    ind1=ind1(:);
-
-    ind2=1:DD;
-    ind2=ind2(onesNy,:);
-    ind2=ind2(:);
-
-    dwork.slope=slope;
-    dwork.ind1=ind1;
-    dwork.ind2=ind2;
-    dwork.onesR=onesR;
-    dwork.onesDD=onesDD;
-    dwork.xxsd=xxsd;
-    dwork.mindist=mindist;
-    dwork.Np=Np;
+    dwork=work;
+    [dwork.ind1,dwork.ind2]=comp_ind(DD,Np,Ny,onesNy);
     dwork.Nx=Ny;
-    dwork.R=R;
-    dwork.DD=DD;
     dwork.NxDD=Ny*DD;
-    dwork.euclidean=euclidean;
-    dwork.indepPP=indepPP;
-    dwork.MAD=MAD;
   end
 
   clear onesNx onesNy;
-  clear ind1 ind2;
 
   etype='RMSE';
   if MAD,
@@ -464,76 +487,193 @@ if ~probemode,
   fprintf(logfile,'%s total preprocessing time (s): %f\n',fn,toc);
 end
 
-if autoprobe,
-  probe=[zeros(3,1),10.^[-4:4;-4:4;-4:4]];
-end
-if exist('probe','var'),
+%%% Cross-validaton %%%
+if crossvalidate,
   tic;
-  probecfg.onesDD=onesDD;
-  probecfg.onesR=onesR;
-  probecfg.minI=round(probeunstable*probeI);
-  probecfg.maxI=probeI;
-  probecfg.stats=stats;
-  probecfg.orthoit=orthoit;
-  probecfg.orthonormal=orthonormal;
-  probecfg.orthogonal=orthogonal;
-  probecfg.stochastic=stochastic;
-  probecfg.devel=devel;
-  probecfg.work=work;
-  if devel,
-    probecfg.dwork=dwork;
-    probecfg.Y=Y;
-    probecfg.YY=YY;
-  end
+
+  cv_Ny=floor(Nx/crossvalidate);
+  cv_Nx=cv_Ny*(crossvalidate-1);
+
+  %%% Generate cross-validation partitions %%%
+  [v,cv_rnd]=sort(rand(Nx,1));
+  cv_rnd=cv_rnd(1:cv_Ny*crossvalidate);
+
+  Bi=pca(X);
+  Bi=Bi(:,1:min(D,32));
+
+  %%% Constant data structures %%%
+  cv_wk=work;
+  cv_wk.Nx=cv_Nx;
+
+  cv_dwk=work;
+  cv_dwk.Nx=cv_Ny;
+  cv_dwk.NxDD=cv_Ny*DD;
+
+  cv_onesNx=ones(cv_Nx,1);
+  cv_onesNy=ones(cv_Ny,1);
+
   if stochastic,
-    probecfg.swork=swork;
-    probecfg.stochsamples=stochsamples;
-    probecfg.stocheck=stocheck;
-    probecfg.stocheckfull=stocheckfull;
-    probecfg.stochfinalexact=stochfinalexact;
+    cv_swk=swork;
   end
-  bestIJE=[0,1];
-  ratesB=unique(probe(1,probe(1,:)>=0));
-  ratesP=unique(probe(2,probe(2,:)>=0));
-  ratesPP=unique(probe(3,probe(3,:)>=0));
-  nB=1;
-  while nB<=size(ratesB,2),
-    nP=1;
-    while nP<=size(ratesP,2),
-      nPP=1;
-      while nPP<=size(ratesPP,2),
-        if ~(ratesB(nB)==0 && ratesP(nP)==0 && ratesPP(nPP)==0),
-          probecfg.rateB=ratesB(nB);
-          probecfg.rateP=ratesP(nP);
-          probecfg.ratePP=ratesPP(nPP);
-          [I,J]=ldppr(X,XX,B0,P0,PP0,'probemode',probecfg);
-          mark='';
-          if I>bestIJE(1) || (I==bestIJE(1) && J<bestIJE(2)),
-            bestIJE=[I,J];
-            rateB=ratesB(nB);
-            rateP=ratesP(nP);
-            ratePP=ratesPP(nPP);
-            mark=' +';
-          end
-          if I<probeunstable*probeI,
-            if nPP==1,
-              if nP==1,
-                nB=size(ratesB,2)+1;
-              end
-              nP=size(ratesP,2)+1;
-            end
-            break;
-          end
-          fprintf(logfile,'%s rates={%.2E %.2E %.2E} => impI=%.2f J=%.4f%s\n',fn,ratesB(nB),ratesP(nP),ratesPP(nPP),I/probeI,J,mark);
-        end
-        nPP=nPP+1;
+
+  cv_cfg.minI=minI;
+  cv_cfg.maxI=maxI;
+  cv_cfg.epsilon=epsilon;
+  cv_cfg.stats=maxI;
+  cv_cfg.orthoit=orthoit;
+  cv_cfg.orthonormal=orthonormal;
+  cv_cfg.orthogonal=orthogonal;
+  cv_cfg.euclidean=euclidean;
+  cv_cfg.testJ=testJ;
+  cv_cfg.stochastic=stochastic;
+  cv_cfg.devel=true;
+  cv_cfg.onesDD=onesDD;
+  if stochastic,
+    cv_cfg.stochsamples=stochsamples;
+    cv_cfg.stocheck=stocheck;
+    cv_cfg.stocheckfull=stocheckfull;
+    cv_cfg.stochfinalexact=stochfinalexact;
+  end
+  cv_cfg.logfile=fopen('/dev/null');
+
+  Nparam=numel(cv_slope)*numel(cv_Np)*numel(cv_Dr)*numel(cv_rateB)*numel(cv_rateP)*numel(cv_ratePP);
+  cv_E=zeros(Nparam,1);
+  cv_I=zeros(Nparam,1);
+
+  %%% Perform cross-validation %%%
+  for v=1:crossvalidate,
+    cv_Xrnd=cv_rnd;
+    cv_Xrnd((v-1)*cv_Ny+1:v*cv_Ny)=[];
+    cv_Xrnd=sort(cv_Xrnd);
+    cv_Yrnd=cv_rnd((v-1)*cv_Ny+1:v*cv_Ny);
+    cv_Yrnd=sort(cv_Yrnd);
+    cv_X=X(:,cv_Xrnd);
+    cv_XX=XX(:,cv_Xrnd);
+
+    cv_cfg.Y=X(:,cv_Yrnd);
+    cv_cfg.YY=XX(:,cv_Yrnd);
+
+    %%% Vary the slope %%%
+    param=1;
+    for slope=cv_slope,
+      cv_wk.slope=slope;
+      cv_dwk.slope=slope;
+      if stochastic,
+        cv_swk.slope=slope;
       end
-      nP=nP+1;
+
+      %%% Vary the number of prototypes %%%
+      for Np=cv_Np,
+
+        [P0,PP0]=ldppr_initP(cv_X,cv_XX,Np);
+        [cv_wk.ind1,cv_wk.ind2]=comp_ind(DD,Np,cv_Nx,cv_onesNx);
+        [cv_dwk.ind1,cv_dwk.ind2]=comp_ind(DD,Np,cv_Nx,cv_onesNy);
+        cv_wk.Np=Np;
+        cv_dwk.Np=Np;
+
+        if stochastic,
+          [cv_swk.ind1,cv_swk.ind2]=comp_ind(DD,Np,stochsamples,onesS);
+          cv_swk.Np=Np;
+        end
+
+        %%% Vary the reduced dimensionality %%%
+        for Dr=cv_Dr,
+          B0=Bi(:,1:Dr);
+          onesDr=ones(Dr,1);
+          cv_cfg.onesDr=onesDr;
+
+          cv_wk.Dr=Dr;
+          cv_wk.onesDr=onesDr;
+          cv_dwk.Dr=Dr;
+          cv_dwk.onesDr=onesDr;
+          cv_cfg.work=cv_wk;
+          cv_cfg.dwork=cv_dwk;
+          if stochastic,
+            cv_swk.Dr=Dr;
+            cv_swk.onesDr=onesDr;
+            cv_cfg.swork=cv_swk;
+          end
+
+          fprintf(logfile,'%s cv %d: slope=%g Np=%d Dr=%d ',fn,v,slope,Np,Dr);
+
+          %%% Vary learning rates %%%
+          for rateB=cv_rateB,
+            cv_cfg.rateB=rateB;
+            for rateP=cv_rateP,
+              cv_cfg.rateP=rateP;
+              for ratePP=cv_ratePP,
+                cv_cfg.ratePP=ratePP;
+
+                [I,E]=ldppr(cv_X,cv_XX,B0,P0,PP0,'probemode',cv_cfg);
+                cv_E(param)=cv_E(param)+E;
+                cv_I(param)=cv_I(param)+I;
+                cv_param{param}.slope=slope;
+                cv_param{param}.Np=Np;
+                cv_param{param}.Dr=Dr;
+                cv_param{param}.rateB=rateB;
+                cv_param{param}.rateP=rateP;
+                cv_param{param}.ratePP=ratePP;
+                param=param+1;
+                fprintf(logfile,'.');
+              end
+            end
+          end
+          fprintf(logfile,'\n');
+        end
+      end
     end
-    nB=nB+1;
   end
-  fprintf(logfile,'%s total probe time (s): %f\n',fn,toc);
-  fprintf(logfile,'%s selected rates={%.2E %.2E %.2E} impI=%.2f J=%.4f\n',fn,rateB,rateP,ratePP,bestIJE(1)/probeI,bestIJE(2));
+
+  cv_E=cv_E./crossvalidate;
+  cv_I=cv_I./crossvalidate;
+  param=find(min(cv_E)==cv_E,1);
+  if cv_save,
+    save('ldppr_cv.mat','cv_E','cv_I','cv_param');
+  end
+
+  %%% Get best cross-validaton parameters %%%
+  slope=cv_param{param}.slope;
+  Np=cv_param{param}.Np;
+  Dr=cv_param{param}.Dr;
+  rateB=cv_param{param}.rateB;
+  rateP=cv_param{param}.rateP;
+  ratePP=cv_param{param}.ratePP;
+  onesDr=ones(Dr,1);
+  onesNp=ones(Np,1);
+
+  B0=Bi(:,1:Dr);
+  [P0,PP0]=ldppr_initP(X,XX,Np);
+  [work.ind1,work.ind2]=comp_ind(DD,Np,Nx,ones(Nx,1));
+
+  work.slope=slope;
+  work.onesDr=onesDr;
+  work.Np=Np;
+  work.Dr=Dr;
+  if stochastic,
+    [swork.ind1,swork.ind2]=comp_ind(DD,Np,stochsamples,onesS);
+    swork.slope=slope;
+    swork.onesDr=onesDr;
+    swork.Np=Np;
+    swork.Dr=Dr;
+  end
+  if devel,
+    [dwork.ind1,dwork.ind2]=comp_ind(DD,Np,Ny,ones(Ny,1));
+    dwork.slope=slope;
+    dwork.onesDr=onesDr;
+    dwork.Np=Np;
+    dwork.Dr=Dr;
+  end
+
+  cv_test='E';
+  if testJ,
+    cv_test='J';
+  end
+  fprintf(logfile,'%s cv best statistics: %s=%g impI=%g\n',fn,cv_test,cv_E(param),cv_I(param));
+  fprintf(logfile,'%s cv best parameters: slope=%g Np=%d Dr=%d rateB=%g rateP=%g ratePP=%g\n',fn,slope,Np,Dr,rateB,rateP,ratePP);
+  fprintf(logfile,'%s total cross-validation time (s): %f\n',fn,toc);
+
+  fclose(cv_cfg.logfile);
+  clear cv_*;
 end
 
 if euclidean,
@@ -559,7 +699,7 @@ J0=1;
 I=0;
 
 if ~probemode,
-  fprintf(logfile,'%s Dx=%d Dxx=%d R=%d Nx=%d\n',fn,D,DD,R,Nx);
+  fprintf(logfile,'%s Nx=%d Dx=%d Dxx=%d Dr=%d Np=%d\n',fn,Nx,D,DD,Dr,Np);
   fprintf(logfile,'%s output: iteration | J | delta(J) | %s\n',fn,etype);
   tic;
 end
@@ -594,11 +734,6 @@ if ~stochastic,
     end
 
     %%% Determine if algorithm has to be stopped %%%
-    if probemode,
-      if bestIJE(4)+(maxI-I)<probeunstable,
-        break;
-      end
-    end
     if I>=maxI || ~isfinite(J) || ~isfinite(E) || (I>=minI && abs(J-J0)<epsilon),
       fprintf(logfile,'%s stopped iterating, ',fn);
       if I>=maxI,
@@ -622,18 +757,6 @@ if ~stochastic,
     else
       PPi=PPi-ratePP.*fPP(onesDD,:);
     end
-
-    %if mod(I,3)==0,
-    %  Bi=Bi-rateB.*(X*fX'+Pi*fP');
-    %elseif mod(I+1,3)==0,
-    %  Pi=Pi-rateP.*(Bi*fP);
-    %else
-    %  if indepPP,
-    %    PPi=PPi-ratePP.*fPP;
-    %  else
-    %    PPi=PPi-ratePP.*fPP(onesDD,:);
-    %  end
-    %end
 
     %%% Parameter constraints %%%
     if mod(I,orthoit)==0,
@@ -705,11 +828,6 @@ else
       end
 
       %%% Determine if algorithm has to be stopped %%%
-      if probemode,
-        if bestIJE(4)+(maxI-I)<probeunstable,
-          break;
-        end
-      end
       if I>=maxI || ~isfinite(J) || ~isfinite(E) || (I>=minI && abs(J-J0)<epsilon),
         fprintf(logfile,'%s stopped iterating, ',fn);
         if I>=maxI,
@@ -758,7 +876,7 @@ else
   if stochfinalexact && ~stocheckfull,
     [E,J]=ldppr_index(bestB'*bestP,bestPP,bestB'*X,XX,work);
     if devel,
-      E=ldpp_index(bestB'*bestP,bestPP,bestB'*Y,YY,dwork);
+      E=ldppr_index(bestB'*bestP,bestPP,bestB'*Y,YY,dwork);
     end
 
     fprintf(logfile,'%s best iteration approx: I=%d J=%f E=%f\n',fn,bestIJE(1),bestIJE(2),bestIJE(3));
@@ -781,8 +899,12 @@ if ~verbose,
 end
 
 if probemode,
-  bestB=bestIJE(4);
-  bestP=bestIJE(2);
+  bestB=bestIJE(4)/max(I,1); % amount of improvement iterations
+  if testJ,
+    bestP=bestIJE(2); % optimization index
+  else
+    bestP=bestIJE(3); % error rate
+  end
   return;
 end
 
@@ -797,13 +919,13 @@ if normalize || linearnorm,
   else
     bestP=bestP.*xsd(xsd~=0,onesNp)+xmu(xsd~=0,onesNp);
   end
-  bestB=bestB./xsd(xsd~=0,onesR);
+  bestB=bestB./xsd(xsd~=0,onesDr);
   if sum(xsd==0)>0,
     P=bestP;
     B=bestB;
     bestP=zeros(D,Np);
     bestP(xsd~=0,:)=P;
-    bestB=zeros(D,R);
+    bestB=zeros(D,Dr);
     bestB(xsd~=0,:)=B;
   end
 elseif whiten,
@@ -819,11 +941,11 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [E, J, fX, fP, fPP] = ldppr_index(rP, PP, rX, XX, work)
 
-  R=work.R;
+  Dr=work.Dr;
   DD=work.DD;
   Np=work.Np;
   Nx=work.Nx;
-  onesR=work.onesR;
+  onesDr=work.onesDr;
   onesDD=work.onesDD;
   mindist=work.mindist;
   ind1=work.ind1;
@@ -834,9 +956,9 @@ function [E, J, fX, fP, fPP] = ldppr_index(rP, PP, rX, XX, work)
     dist=sum(power(repmat(rX,1,Np)-rP(:,ind1),2),1);
   else %elseif cosine,
     rpsd=sqrt(sum(rP.*rP,1));
-    rP=rP./rpsd(onesR,:);
+    rP=rP./rpsd(onesDr,:);
     rxsd=sqrt(sum(rX.*rX,1));
-    rX=rX./rxsd(onesR,:);
+    rX=rX./rxsd(onesDr,:);
     dist=1-sum(repmat(rX,1,Np).*rP(:,ind1),1);
   end
   dist(dist<mindist)=mindist;
@@ -869,12 +991,12 @@ function [E, J, fX, fP, fPP] = ldppr_index(rP, PP, rX, XX, work)
     fact=fact.*sum(repmat(dXX,1,Np).*(repmat(mXX,1,Np)-PP(:,ind1)),1)';
 
     if work.euclidean,
-      fact=reshape(fact(:,onesR)'.*(repmat(rX,1,Np)-rP(:,ind1)),[R Nx Np]);
+      fact=reshape(fact(:,onesDr)'.*(repmat(rX,1,Np)-rP(:,ind1)),[Dr Nx Np]);
       fP=-permute(sum(fact,2),[1 3 2]);
       fX=sum(fact,3);
     else %elseif cosine,
-      fP=-permute(sum(reshape(fact(:,onesR)'.*repmat(rX,1,Np),[R Nx Np]),2),[1 3 2]);
-      fX=-sum(reshape(fact(:,onesR)'.*rP(:,ind1),[R Nx Np]),3);
+      fP=-permute(sum(reshape(fact(:,onesDr)'.*repmat(rX,1,Np),[Dr Nx Np]),2),[1 3 2]);
+      fX=-sum(reshape(fact(:,onesDr)'.*rP(:,ind1),[Dr Nx Np]),3);
     end
   end
 
@@ -882,11 +1004,11 @@ function [E, J, fX, fP, fPP] = ldppr_index(rP, PP, rX, XX, work)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [E, J, fX, fP, fPP] = ldppr_sindex(rP, PP, rX, XX, work)
 
-  R=work.R;
+  Dr=work.Dr;
   DD=work.DD;
   Np=work.Np;
   Nx=work.Nx;
-  onesR=work.onesR;
+  onesDr=work.onesDr;
   onesDD=work.onesDD;
   mindist=work.mindist;
   ind1=work.ind1;
@@ -897,9 +1019,9 @@ function [E, J, fX, fP, fPP] = ldppr_sindex(rP, PP, rX, XX, work)
     dist=sum(power(repmat(rX,1,Np)-rP(:,ind1),2),1);
   else %elseif cosine,
     rpsd=sqrt(sum(rP.*rP,1));
-    rP=rP./rpsd(onesR,:);
+    rP=rP./rpsd(onesDr,:);
     rxsd=sqrt(sum(rX.*rX,1));
-    rX=rX./rxsd(onesR,:);
+    rX=rX./rxsd(onesDr,:);
     dist=1-sum(repmat(rX,1,Np).*rP(:,ind1),1);
   end
   dist(dist<mindist)=mindist;
@@ -929,13 +1051,78 @@ function [E, J, fX, fP, fPP] = ldppr_sindex(rP, PP, rX, XX, work)
   fact=fact.*sum(repmat(dXX,1,Np).*(repmat(mXX,1,Np)-PP(:,ind1)),1)';
 
   if work.euclidean,
-    fact=reshape(fact(:,onesR)'.*(repmat(rX,1,Np)-rP(:,ind1)),[R Nx Np]);
+    fact=reshape(fact(:,onesDr)'.*(repmat(rX,1,Np)-rP(:,ind1)),[Dr Nx Np]);
     fP=-permute(sum(fact,2),[1 3 2]);
     fX=sum(fact,3);
   else %elseif cosine,
-    fP=-permute(sum(reshape(fact(:,onesR)'.*repmat(rX,1,Np),[R Nx Np]),2),[1 3 2]);
-    fX=-sum(reshape(fact(:,onesR)'.*rP(:,ind1),[R Nx Np]),3);
+    fP=-permute(sum(reshape(fact(:,onesDr)'.*repmat(rX,1,Np),[Dr Nx Np]),2),[1 3 2]);
+    fX=-sum(reshape(fact(:,onesDr)'.*rP(:,ind1),[Dr Nx Np]),3);
   end
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [mu, ind] = kmeans(X, K)
+  maxI=100;
+  [D,N]=size(X);
+
+  if K==1,
+    mu=mean(X,2);
+    if nargout>1,
+      ind=ones(N,1);
+    end
+    return;
+  elseif K==N,
+    mu=X;
+    if nargout>1,
+      ind=[1:N]';
+    end
+    return;
+  end
+  
+  [ind1,ind2]=comp_ind(N,K,ones(N,1),ones(K,1));
+  [k,pind]=sort(rand(N,1));
+  mu=X(:,pind(1:K));
+
+  I=0;
+  while true,
+    dist=reshape(sum((X(:,ind1)-mu(:,ind2)).^2,1),N,K);
+    [dist,ind]=min(dist,[],2);
+
+    if I==maxI || sum(ind~=pind)==0,
+      break;
+    end
+
+    kk=unique(ind);
+    if size(kk,1)~=K,
+      for k=1:K,
+        if sum(kk==k)==0,
+          mu(:,k)=X(:,round((N-1)*rand)+1);
+        end
+      end
+    end
+
+    for k=kk',
+      mu(:,k)=mean(X(:,ind==k),2);
+    end
+
+    pind=ind;
+    I=I+1;
+  end
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [ind1, ind2] = comp_ind(DD, Np, Nx, onesNx)
+  if max(size(onesNx))==0,
+    onesNx=ones(Nx,1);
+  end
+
+  ind1=1:Np;
+  ind1=ind1(onesNx,:);
+  ind1=ind1(:);
+
+  ind2=1:DD;
+  ind2=ind2(onesNx,:);
+  ind2=ind2(:);
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
