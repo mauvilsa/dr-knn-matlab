@@ -157,9 +157,7 @@ end
 
 I=0;
 
-if verbose,
-  tic;
-end
+tic;
 
 while true,
 
