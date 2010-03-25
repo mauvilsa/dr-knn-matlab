@@ -64,6 +64,7 @@ function [bestB, bestP, bestPP] = ldppr(X, XX, B0, P0, PP0, varargin)
 %   'cv_Dr',[DRs]              - Reduced dimensions to try (default=[2.^[2:5]])
 %   'cv_rateB',[RATEBs]        - B learning rates to try (default=[10.^[-2:0]])
 %   'cv_rateP',[RATEPs]        - P learning rates to try (default=[10.^[-2:0]])
+%   'cv_ratePP',[RATEPPs]      - PP learning rates to try (default=[0])
 %   'cv_save',(true|false)     - Save cross-validation results (default=false)
 %
 %
@@ -171,6 +172,7 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'cv_Dr') || ...
          strcmp(varargin{n},'cv_rateB') || ...
          strcmp(varargin{n},'cv_rateP') || ...
+         strcmp(varargin{n},'cv_ratePP') || ...
          strcmp(varargin{n},'logfile'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~isnumeric(varargin{n+1}) || sum(sum(varargin{n+1}<0))~=0,
@@ -251,7 +253,7 @@ if max(size(P0))==1,
   if ~crossvalidate,
     [P0,PP0]=ldppr_initP(X,XX,P0);
   else
-    PP0=zeros(1,P0);
+    PP0=zeros(DD,P0);
     P0=rand(D,P0);
   end
 end
@@ -450,6 +452,8 @@ if ~probemode,
   [work.ind1,work.ind2]=comp_ind(DD,Np,Nx,onesNx);
   work.slope=slope;
   work.onesDr=onesDr;
+  work.onesNp=onesNp;
+  work.onesNx=onesNx;
   work.onesDD=onesDD;
   work.xxsd=xxsd;
   work.mindist=mindist;
@@ -457,7 +461,6 @@ if ~probemode,
   work.Nx=Nx;
   work.Dr=Dr;
   work.DD=DD;
-  work.NxDD=Nx*DD;
   work.euclidean=euclidean;
   work.indepPP=indepPP;
   work.MAD=MAD;
@@ -466,18 +469,17 @@ if ~probemode,
     swork=work;
     onesS=ones(stochsamples,1);
     [swork.ind1,swork.ind2]=comp_ind(DD,Np,stochsamples,onesS);
+    swork.onesNx=onesS;
+    swork.onesNp=onesNp;
     swork.Nx=stochsamples;
-    swork.NxDD=stochsamples*DD;
   end
 
   if devel,
     dwork=work;
     [dwork.ind1,dwork.ind2]=comp_ind(DD,Np,Ny,onesNy);
     dwork.Nx=Ny;
-    dwork.NxDD=Ny*DD;
+    dwork.onesNx=onesNy;
   end
-
-  clear onesNx onesNy;
 
   etype='RMSE';
   if MAD,
@@ -502,15 +504,16 @@ if crossvalidate,
   Bi=Bi(:,1:min(D,32));
 
   %%% Constant data structures %%%
+  cv_onesNx=ones(cv_Nx,1);
+  cv_onesNy=ones(cv_Ny,1);
+
   cv_wk=work;
   cv_wk.Nx=cv_Nx;
+  cv_wk.onesNx=cv_onesNx;
 
   cv_dwk=work;
   cv_dwk.Nx=cv_Ny;
-  cv_dwk.NxDD=cv_Ny*DD;
-
-  cv_onesNx=ones(cv_Nx,1);
-  cv_onesNy=ones(cv_Ny,1);
+  cv_dwk.onesNx=cv_onesNy;
 
   if stochastic,
     cv_swk=swork;
@@ -519,7 +522,7 @@ if crossvalidate,
   cv_cfg.minI=minI;
   cv_cfg.maxI=maxI;
   cv_cfg.epsilon=epsilon;
-  cv_cfg.stats=maxI;
+  cv_cfg.stats=maxI+1;
   cv_cfg.orthoit=orthoit;
   cv_cfg.orthonormal=orthonormal;
   cv_cfg.orthogonal=orthogonal;
@@ -568,12 +571,15 @@ if crossvalidate,
         [P0,PP0]=ldppr_initP(cv_X,cv_XX,Np);
         [cv_wk.ind1,cv_wk.ind2]=comp_ind(DD,Np,cv_Nx,cv_onesNx);
         [cv_dwk.ind1,cv_dwk.ind2]=comp_ind(DD,Np,cv_Nx,cv_onesNy);
+        cv_wk.onesNp=onesNp;
+        cv_dwk.onesNp=onesNp;
         cv_wk.Np=Np;
         cv_dwk.Np=Np;
 
         if stochastic,
           [cv_swk.ind1,cv_swk.ind2]=comp_ind(DD,Np,stochsamples,onesS);
           cv_swk.Np=Np;
+          cv_swk.onesNp=onesNp;
         end
 
         %%% Vary the reduced dimensionality %%%
@@ -647,12 +653,14 @@ if crossvalidate,
 
   work.slope=slope;
   work.onesDr=onesDr;
+  work.onesNp=onesNp;
   work.Np=Np;
   work.Dr=Dr;
   if stochastic,
     [swork.ind1,swork.ind2]=comp_ind(DD,Np,stochsamples,onesS);
     swork.slope=slope;
     swork.onesDr=onesDr;
+    swork.onesNp=onesNp;
     swork.Np=Np;
     swork.Dr=Dr;
   end
@@ -660,6 +668,7 @@ if crossvalidate,
     [dwork.ind1,dwork.ind2]=comp_ind(DD,Np,Ny,ones(Ny,1));
     dwork.slope=slope;
     dwork.onesDr=onesDr;
+    dwork.onesNp=onesNp;
     dwork.Np=Np;
     dwork.Dr=Dr;
   end
@@ -939,7 +948,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [E, J, fX, fP, fPP] = ldppr_index(rP, PP, rX, XX, work)
+function [E, J, fX, fP, fPP] = ldppr_index(P, PP, X, XX, work)
 
   Dr=work.Dr;
   DD=work.DD;
@@ -953,16 +962,19 @@ function [E, J, fX, fP, fPP] = ldppr_index(rP, PP, rX, XX, work)
 
   %%% Compute distances %%%
   if work.euclidean,
-    dist=sum(power(repmat(rX,1,Np)-rP(:,ind1),2),1);
+    x2=sum((X.^2),1)';
+    p2=sum((P.^2),1);
+    dist=X'*P;
+    dist=x2(:,work.onesNp)+p2(work.onesNx,:)-dist-dist;
   else %elseif cosine,
-    rpsd=sqrt(sum(rP.*rP,1));
-    rP=rP./rpsd(onesDr,:);
-    rxsd=sqrt(sum(rX.*rX,1));
-    rX=rX./rxsd(onesDr,:);
-    dist=1-sum(repmat(rX,1,Np).*rP(:,ind1),1);
+    psd=sqrt(sum(P.*P,1));
+    P=P./psd(onesDr,:);
+    xsd=sqrt(sum(X.*X,1));
+    X=X./xsd(onesDr,:);
+    dist=1-X'*P;
   end
   dist(dist<mindist)=mindist;
-  dist=reshape(1./dist,Nx,Np);
+  dist=1./dist;
 
   S=sum(dist,2);
   mXX=(reshape(sum(repmat(dist,DD,1).*PP(ind2,:),2),Nx,DD)./S(:,onesDD))';
@@ -970,9 +982,9 @@ function [E, J, fX, fP, fPP] = ldppr_index(rP, PP, rX, XX, work)
 
   %%% Compute statistics %%%
   if work.MAD;
-    E=sum(sum(abs(dXX),2).*work.xxsd)/work.NxDD;
+    E=sum(sum(abs(dXX),2).*work.xxsd)/(Nx*DD);
   else
-    E=sqrt(sum(sum(dXX.*dXX,2).*work.xxsd)/work.NxDD);
+    E=sqrt(sum(sum(dXX.*dXX,2).*work.xxsd)/(Nx*DD));
   end
   if nargout>1,
     tanhXX=tanh(work.slope*sum(dXX.*dXX,1))';
@@ -991,18 +1003,18 @@ function [E, J, fX, fP, fPP] = ldppr_index(rP, PP, rX, XX, work)
     fact=fact.*sum(repmat(dXX,1,Np).*(repmat(mXX,1,Np)-PP(:,ind1)),1)';
 
     if work.euclidean,
-      fact=reshape(fact(:,onesDr)'.*(repmat(rX,1,Np)-rP(:,ind1)),[Dr Nx Np]);
+      fact=reshape(fact(:,onesDr)'.*(repmat(X,1,Np)-P(:,ind1)),[Dr Nx Np]);
       fP=-permute(sum(fact,2),[1 3 2]);
       fX=sum(fact,3);
     else %elseif cosine,
-      fP=-permute(sum(reshape(fact(:,onesDr)'.*repmat(rX,1,Np),[Dr Nx Np]),2),[1 3 2]);
-      fX=-sum(reshape(fact(:,onesDr)'.*rP(:,ind1),[Dr Nx Np]),3);
+      fP=-permute(sum(reshape(fact(:,onesDr)'.*repmat(X,1,Np),[Dr Nx Np]),2),[1 3 2]);
+      fX=-sum(reshape(fact(:,onesDr)'.*P(:,ind1),[Dr Nx Np]),3);
     end
   end
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [E, J, fX, fP, fPP] = ldppr_sindex(rP, PP, rX, XX, work)
+function [E, J, fX, fP, fPP] = ldppr_sindex(P, PP, X, XX, work)
 
   Dr=work.Dr;
   DD=work.DD;
@@ -1016,16 +1028,19 @@ function [E, J, fX, fP, fPP] = ldppr_sindex(rP, PP, rX, XX, work)
 
   %%% Compute distances %%%
   if work.euclidean,
-    dist=sum(power(repmat(rX,1,Np)-rP(:,ind1),2),1);
+    x2=sum((X.^2),1)';
+    p2=sum((P.^2),1);
+    dist=X'*P;
+    dist=x2(:,work.onesNp)+p2(work.onesNx,:)-dist-dist;
   else %elseif cosine,
-    rpsd=sqrt(sum(rP.*rP,1));
-    rP=rP./rpsd(onesDr,:);
-    rxsd=sqrt(sum(rX.*rX,1));
-    rX=rX./rxsd(onesDr,:);
-    dist=1-sum(repmat(rX,1,Np).*rP(:,ind1),1);
+    psd=sqrt(sum(P.*P,1));
+    P=P./psd(onesDr,:);
+    xsd=sqrt(sum(X.*X,1));
+    X=X./xsd(onesDr,:);
+    dist=1-X'*P;
   end
   dist(dist<mindist)=mindist;
-  dist=reshape(1./dist,Nx,Np);
+  dist=1./dist;
 
   S=sum(dist,2);
   mXX=(reshape(sum(repmat(dist,DD,1).*PP(ind2,:),2),Nx,DD)./S(:,onesDD))';
@@ -1034,9 +1049,9 @@ function [E, J, fX, fP, fPP] = ldppr_sindex(rP, PP, rX, XX, work)
 
   %%% Compute statistics %%%
   if work.MAD;
-    E=sum(sum(abs(dXX),2).*work.xxsd)/work.NxDD;
+    E=sum(sum(abs(dXX),2).*work.xxsd)/(Nx*DD);
   else
-    E=sqrt(sum(sum(dXX.*dXX,2).*work.xxsd)/work.NxDD);
+    E=sqrt(sum(sum(dXX.*dXX,2).*work.xxsd)/(Nx*DD));
   end
   J=sum(tanhXX)/Nx;
 
@@ -1051,19 +1066,19 @@ function [E, J, fX, fP, fPP] = ldppr_sindex(rP, PP, rX, XX, work)
   fact=fact.*sum(repmat(dXX,1,Np).*(repmat(mXX,1,Np)-PP(:,ind1)),1)';
 
   if work.euclidean,
-    fact=reshape(fact(:,onesDr)'.*(repmat(rX,1,Np)-rP(:,ind1)),[Dr Nx Np]);
+    fact=reshape(fact(:,onesDr)'.*(repmat(X,1,Np)-P(:,ind1)),[Dr Nx Np]);
     fP=-permute(sum(fact,2),[1 3 2]);
     fX=sum(fact,3);
   else %elseif cosine,
-    fP=-permute(sum(reshape(fact(:,onesDr)'.*repmat(rX,1,Np),[Dr Nx Np]),2),[1 3 2]);
-    fX=-sum(reshape(fact(:,onesDr)'.*rP(:,ind1),[Dr Nx Np]),3);
+    fP=-permute(sum(reshape(fact(:,onesDr)'.*repmat(X,1,Np),[Dr Nx Np]),2),[1 3 2]);
+    fX=-sum(reshape(fact(:,onesDr)'.*P(:,ind1),[Dr Nx Np]),3);
   end
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [mu, ind] = kmeans(X, K)
   maxI=100;
-  [D,N]=size(X);
+  N=size(X,2);
 
   if K==1,
     mu=mean(X,2);
@@ -1078,14 +1093,18 @@ function [mu, ind] = kmeans(X, K)
     end
     return;
   end
-  
-  [ind1,ind2]=comp_ind(N,K,ones(N,1),ones(K,1));
+
+  onesN=ones(N,1);
+  onesK=ones(K,1);
   [k,pind]=sort(rand(N,1));
   mu=X(:,pind(1:K));
 
   I=0;
   while true,
-    dist=reshape(sum((X(:,ind1)-mu(:,ind2)).^2,1),N,K);
+    x2=sum((X.^2),1)';
+    mu2=sum((mu.^2),1);
+    dist=X'*mu;
+    dist=x2(:,onesK)+mu2(onesN,:)-dist-dist;
     [dist,ind]=min(dist,[],2);
 
     if I==maxI || sum(ind~=pind)==0,
@@ -1234,7 +1253,7 @@ if DD==1,
   for m=mn:d:mx,
     s=XX>=m-d/2 & XX<m+d/2;
     if sum(s)>multi,
-      P0=[P0,kmeans(X(:,s),multi,'seed',seed)];
+      P0=[P0,kmeans(X(:,s),multi)];
       seed=rand('state');
     else
       [mdist,idx]=sort(abs(XX-m));
@@ -1257,7 +1276,7 @@ elseif DD==2,
       sn=XX(2,:)>=n-d(2)/2 & XX(2,:)<n+d(2)/2;
       s=sm&sn;
       if sum(s)>multi,
-        P0=[P0,kmeans(X(:,s),multi,'seed',seed)];
+        P0=[P0,kmeans(X(:,s),multi)];
         seed=rand('state');
       else
         mu=[m;n];

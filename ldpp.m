@@ -485,9 +485,11 @@ if ~probemode,
   end
 
   %%% Constant data structures %%%
-  [work.ind1,work.ind2,work.sel]=comp_ind(Nx,Np,onesNx,onesNp,Xlabels,Plabels);
+  work.sel=Plabels(:,onesNx)'==Xlabels(:,onesNp);
   work.slope=slope;
   work.onesDr=onesDr;
+  work.onesNp=onesNp;
+  work.onesNx=onesNx;
   work.Np=Np;
   work.Nx=Nx;
   work.C=C;
@@ -500,20 +502,18 @@ if ~probemode,
   if stochastic,
     swork=work;
     onesS=ones(stochsamples,1);
-    [swork.ind1,swork.ind2]=comp_ind(stochsamples,Np,onesS,onesNp);
-    swork.onesS=onesS;
-    swork.overS=1/stochsamples;
+    swork.onesNx=onesS;
+    swork.overNx=1/stochsamples;
     swork.onesNp=onesNp;
     swork.Nx=stochsamples;
   end
 
   if devel,
     dwork=work;
-    [dwork.ind1,dwork.ind2,dwork.sel]=comp_ind(Ny,Np,onesNy,onesNp,Ylabels,Plabels);
+    dwork.sel=Plabels(:,onesNy)'==Ylabels(:,onesNp);
     dwork.Nx=Ny;
+    dwork.onesNx=onesNy;
   end
-
-  clear onesNx onesNy;
 
   fprintf(logfile,'%s total preprocessing time (s): %f\n',fn,toc);
 end
@@ -551,14 +551,16 @@ if crossvalidate,
   Bi=Bi(:,1:min(D,32));
 
   %%% Constant data structures %%%
+  cv_onesNx=ones(cv_Nx,1);
+  cv_onesNy=ones(cv_Ny,1);
+
   cv_wk=work;
   cv_wk.Nx=cv_Nx;
+  cv_wk.onesNx=cv_onesNx;
 
   cv_dwk=work;
   cv_dwk.Nx=cv_Ny;
-
-  cv_onesNx=ones(cv_Nx,1);
-  cv_onesNy=ones(cv_Ny,1);
+  cv_dwk.onesNx=cv_onesNy;
 
   if stochastic,
     cv_swk=swork;
@@ -567,7 +569,7 @@ if crossvalidate,
   cv_cfg.minI=minI;
   cv_cfg.maxI=maxI;
   cv_cfg.epsilon=epsilon;
-  cv_cfg.stats=maxI;
+  cv_cfg.stats=maxI+1;
   cv_cfg.orthoit=orthoit;
   cv_cfg.orthonormal=orthonormal;
   cv_cfg.orthogonal=orthogonal;
@@ -639,13 +641,15 @@ if crossvalidate,
         onesNp=ones(Np,1);
 
         [P0,Plabels]=ldpp_initP(cv_X,cv_Xlabels,[1:C]',Np/C,Bi);
-        [cv_wk.ind1,cv_wk.ind2,cv_wk.sel]=comp_ind(cv_Nx,Np,cv_onesNx,onesNp,cv_Xlabels,Plabels);
-        [cv_dwk.ind1,cv_dwk.ind2,cv_dwk.sel]=comp_ind(cv_Ny,Np,cv_onesNy,onesNp,cv_cfg.Ylabels,Plabels);
+        cv_wk.sel=Plabels(:,cv_onesNx)'==cv_Xlabels(:,onesNp);
+        cv_dwk.sel=Plabels(:,cv_onesNy)'==cv_cfg.Ylabels(:,onesNp);
+        cv_wk.onesNp=onesNp;
+        cv_dwk.onesNp=onesNp;
         cv_wk.Np=Np;
         cv_dwk.Np=Np;
 
         if stochastic,
-          [cv_swk.ind1,cv_swk.ind2]=comp_ind(stochsamples,Np,onesS,onesNp);
+          %[cv_swk.ind1,cv_swk.ind2]=comp_ind(stochsamples,Np,onesS,onesNp);
           cv_swk.Np=Np;
           cv_swk.onesNp=onesNp;
         end
@@ -712,14 +716,14 @@ if crossvalidate,
 
   B0=Bi(:,1:Dr);
   [P0,Plabels]=ldpp_initP(X,Xlabels,[1:C]',Np/C,Bi);
-  [work.ind1,work.ind2,work.sel]=comp_ind(Nx,Np,[],onesNp,Xlabels,Plabels);
+  work.sel=Plabels(:,onesNx)'==Xlabels(:,onesNp);
 
   work.slope=slope;
   work.onesDr=onesDr;
+  work.onesNp=onesNp;
   work.Np=Np;
   work.Dr=Dr;
   if stochastic,
-    [swork.ind1,swork.ind2]=comp_ind(stochsamples,Np,onesS,onesNp);
     swork.slope=slope;
     swork.onesDr=onesDr;
     swork.onesNp=onesNp;
@@ -727,9 +731,10 @@ if crossvalidate,
     swork.Dr=Dr;
   end
   if devel,
-    [dwork.ind1,dwork.ind2,dwork.sel]=comp_ind(Ny,Np,[],onesNp,Ylabels,Plabels);
+    dwork.sel=Plabels(:,onesNy)'==Ylabels(:,onesNp);
     dwork.slope=slope;
     dwork.onesDr=onesDr;
+    dwork.onesNp=onesNp;
     dwork.Np=Np;
     dwork.Dr=Dr;
   end
@@ -994,13 +999,16 @@ function [E, J, fX, fP] = ldpp_index(P, Plabels, X, Xlabels, work)
 
   %%% Compute distances %%%
   if work.euclidean,
-    ds=reshape(sum((X(:,work.ind1)-P(:,work.ind2)).^2,1),Nx,Np);
+    x2=sum((X.^2),1)';
+    p2=sum((P.^2),1);
+    ds=X'*P;
+    ds=x2(:,work.onesNp)+p2(work.onesNx,:)-ds-ds;
   else %elseif cosine,
     psd=sqrt(sum(P.*P,1));
     P=P./psd(onesDr,:);
     xsd=sqrt(sum(X.*X,1));
     X=X./xsd(onesDr,:);
-    ds=reshape(1-sum(X(:,work.ind1).*P(:,work.ind2),1),Nx,Np);
+    ds=1-X'*P;
   end
 
   dd=ds;
@@ -1057,22 +1065,24 @@ function [E, J, fX, fP] = ldpp_sindex(P, Plabels, X, Xlabels, work)
   Np=work.Np;
   Nx=work.Nx;
   onesDr=work.onesDr;
-  slope=work.slope;
-  overS=work.overS;
+  overNx=work.overNx;
 
   %%% Compute distances %%%
   if work.euclidean,
-    ds=reshape(sum((X(:,work.ind1)-P(:,work.ind2)).^2,1),Nx,Np);
+    x2=sum((X.^2),1)';
+    p2=sum((P.^2),1);
+    ds=X'*P;
+    ds=x2(:,work.onesNp)+p2(work.onesNx,:)-ds-ds;
   else %elseif cosine,
     psd=sqrt(sum(P.*P,1));
     P=P./psd(onesDr,:);
     xsd=sqrt(sum(X.*X,1));
     X=X./xsd(onesDr,:);
-    ds=reshape(1-sum(X(:,work.ind1).*P(:,work.ind2),1),Nx,Np);
+    ds=1-X'*P;
   end
 
   dd=ds;
-  ssel=Plabels(:,work.onesS)'==Xlabels(:,work.onesNp);
+  ssel=Plabels(:,work.onesNx)'==Xlabels(:,work.onesNp);
   ds(~ssel)=inf;
   dd(ssel)=inf;
   [ds,is]=min(ds,[],2);
@@ -1080,16 +1090,16 @@ function [E, J, fX, fP] = ldpp_sindex(P, Plabels, X, Xlabels, work)
   ds(ds==0)=realmin;
   dd(dd==0)=realmin;
   ratio=ds./dd;
-  expon=exp(slope*(1-ratio));
+  expon=exp(work.slope*(1-ratio));
   sigm=1./(1+expon);
 
   %%% Compute statistics %%%
-  J=overS*sum(sigm);
-  E=overS*sum(dd<ds);
+  J=overNx*sum(sigm);
+  E=overNx*sum(dd<ds);
 
   %%% Compute gradient %%%
-  dsigm=slope.*expon./((1+expon).*(1+expon));
-  ratio=overS.*ratio;
+  dsigm=work.slope.*expon./((1+expon).*(1+expon));
+  ratio=overNx.*ratio;
   dfact=ratio.*dsigm;
   sfact=dfact./ds;
   dfact=dfact./dd;
@@ -1116,14 +1126,18 @@ function [E, J, fX, fP] = ldpp_sindex(P, Plabels, X, Xlabels, work)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [mu, ind] = kmeans(X, K)
   maxI=100;
-  [D,N]=size(X);
-  [ind1,ind2]=comp_ind(N,K,ones(N,1),ones(K,1));
+  N=size(X,2);
+  onesN=ones(N,1);
+  onesK=ones(K,1);
   [k,pind]=sort(rand(N,1));
   mu=X(:,pind(1:K));
 
   I=0;
   while true,
-    dist=reshape(sum((X(:,ind1)-mu(:,ind2)).^2,1),N,K);
+    x2=sum((X.^2),1)';
+    mu2=sum((mu.^2),1);
+    dist=X'*mu;
+    dist=x2(:,onesK)+mu2(onesN,:)-dist-dist;
     [dist,ind]=min(dist,[],2);
 
     if I==maxI || sum(ind~=pind)==0,
@@ -1145,30 +1159,6 @@ function [mu, ind] = kmeans(X, K)
 
     pind=ind;
     I=I+1;
-  end
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [ind1, ind2, sel] = comp_ind(Nx, Np, onesNx, onesNp, varargin)
-  if max(size(onesNx))==0,
-    onesNx=ones(Nx,1);
-  end
-  if max(size(onesNp))==0,
-    onesNp=ones(Np,1);
-  end
-
-  ind1=[1:Nx]';
-  ind1=ind1(:,onesNp);
-  ind1=ind1(:);
-
-  ind2=1:Np;
-  ind2=ind2(onesNx,:);
-  ind2=ind2(:);
-
-  if nargout>2,
-    Xlabels=varargin{1};
-    Plabels=varargin{2};
-    sel=Plabels(:,onesNx)'==Xlabels(:,onesNp);
   end
 
 
