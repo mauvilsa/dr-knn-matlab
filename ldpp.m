@@ -1,4 +1,4 @@
-function [bestB, bestP, Plabels] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
+function [bestB, bestP, Plabels, info] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
 %
 % LDPP: Learning Discriminative Projections and Prototypes for NN Classification
 %
@@ -515,7 +515,9 @@ if ~probemode,
     dwork.onesNx=onesNy;
   end
 
-  fprintf(logfile,'%s total preprocessing time (s): %f\n',fn,toc);
+  tm=toc;
+  info.time=tm;
+  fprintf(logfile,'%s total preprocessing time (s): %f\n',fn,tm);
 end
 
 %%% Cross-validaton %%%
@@ -704,6 +706,9 @@ if crossvalidate,
   if cv_save,
     save('ldpp_cv.mat','cv_E','cv_I','cv_param');
   end
+  info.cv_E=cv_E;
+  info.cv_impI=cv_I;
+  info.cv_param=cv_param;
 
   %%% Get best cross-validaton parameters %%%
   slope=cv_param{param}.slope;
@@ -743,9 +748,12 @@ if crossvalidate,
   if testJ,
     cv_test='J';
   end
+
+  tm=toc;
+  info.time=info.time+tm;
   fprintf(logfile,'%s cv best statistics: %s=%g impI=%g\n',fn,cv_test,cv_E(param),cv_I(param));
   fprintf(logfile,'%s cv best parameters: slope=%g Np=%d Dr=%d rateB=%g rateP=%g\n',fn,slope,Np,Dr,rateB,rateP);
-  fprintf(logfile,'%s total cross-validation time (s): %f\n',fn,toc);
+  fprintf(logfile,'%s total cross-validation time (s): %f\n',fn,tm);
 
   fclose(cv_cfg.logfile);
   clear cv_*;
@@ -937,6 +945,11 @@ end
 
 if ~probemode,
   tm=toc;
+  info.time=info.time+tm;
+  info.E=bestIJE(3);
+  info.J=bestIJE(2);
+  info.I=bestIJE(1);
+  info.impI=bestIJE(4)/max(I,1);
   fprintf(logfile,'%s best iteration: I=%d J=%f E=%f\n',fn,bestIJE(1),bestIJE(2),bestIJE(3));
   fprintf(logfile,'%s amount of improvement iterations: %f\n',fn,bestIJE(4)/max(I,1));
   fprintf(logfile,'%s average iteration time (ms): %f\n',fn,1000*tm/(I+0.5));

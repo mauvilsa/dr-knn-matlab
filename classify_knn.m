@@ -1,18 +1,17 @@
-function [E, A, S, cdist] = classify_nn(P, Plabels, X, Xlabels, varargin)
+function [E, A, S] = classify_knn(P, Plabels, K, X, Xlabels, varargin)
 %
-% CLASSIFY_NN: Classify using Nearest Neighbor
+% CLASSIFY_KNN: Classify using K Nearest Neighbor
 %
-% [E, A, S] = classify_nn(P, Plabels, X, Xlabels, ...)
+% [E, A, S] = classify_nn(P, Plabels, K, X, Xlabels, ...)
 %
 % Input:
 %   P        - Prototypes data matrix. Each column vector is a data point.
 %   Plabels  - Prototypes labels.
+%   K        - K neighbors.
 %   X        - Testing data matrix. Each column vector is a data point.
 %   Xlabels  - Testing data class labels.
 %
 % Input (optional):
-%   'prior',PRIOR             - A priori probabilities (default=Ncx/Nx)
-%   'perclass',(true|false)   - Compute error for each class (default=false)
 %   'euclidean',(true|false)  - Euclidean distance (default=true)
 %   'cosine',(true|false)     - Cosine distance (default=false)
 %
@@ -48,14 +47,15 @@ if strncmp(P,'-v',2),
   return;
 end
 
-fn='classify_nn:';
-minargs=4;
+fn='classify_knn:';
+minargs=5;
 
 E=[];
 A=[];
 S=[];
 
 [D,Np]=size(P);
+K=min(Np,K);
 Nx=size(X,2);
 if size(Plabels,1)<size(Plabels,2),
   Plabels=Plabels';
@@ -64,7 +64,6 @@ if size(Xlabels,1)<size(Xlabels,2),
   Xlabels=Xlabels';
 end
 
-perclass=false;
 euclidean=true;
 cosine=false;
 
@@ -75,15 +74,7 @@ argerr=false;
 while size(varargin,2)>0,
   if ~ischar(varargin{n}) || size(varargin,2)<n+1,
     argerr=true;
-  elseif strcmp(varargin{n},'prior'),
-    eval([varargin{n},'=varargin{n+1};']);
-    if ~isnumeric(varargin{n+1}) || sum(sum(varargin{n+1}<0))~=0,
-      argerr=true;
-    else
-      n=n+2;
-    end
-  elseif strcmp(varargin{n},'perclass') || ...
-         strcmp(varargin{n},'euclidean') || ...
+  elseif strcmp(varargin{n},'euclidean') || ...
          strcmp(varargin{n},'cosine'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~islogical(varargin{n+1}),
@@ -136,44 +127,29 @@ elseif cosine,
   d=1-X'*P;
 end
 
-Clabels=unique(Plabels)';
+Clabels=unique(Plabels);
 Cp=max(size(Clabels));
-
-dist=zeros(Nx,Cp);
-c=1;
-for label=Clabels,
-  csel=Plabels==label;
-  dist(:,c)=min(d(:,csel),[],2);
-  c=c+1;
+nPlabels=ones(size(Plabels));
+nXlabels=ones(size(Xlabels));
+for c=2:Cp,
+  nPlabels(Plabels==Clabels(c))=c;
+  nXlabels(Xlabels==Clabels(c))=c;
 end
 
-[d1,A]=min(dist,[],2);
+[d,idx]=sort(d,2);
+lab=nPlabels(idx);
 
-if sum(size(Xlabels))~=0,
-  if perclass || exist('prior','var'),
-    E=zeros(C,1);
-    c=1;
-    for label=Clabels,
-      sel=Xlabels==label;
-      E(c)=sum(Clabels(A(sel))'~=label)/sum(sel);
-      c=c+1;
-    end
-    if exist('prior','var'),
-      E=E'*prior;
-    end
-  else
-    E=sum(Clabels(A)'~=Xlabels)/Nx;
+E=zeros(K,1);
+cnt=zeros(Nx,Cp);
+
+for k=1:K,
+  labk=lab(:,k);
+  for c=1:Cp,
+    sel=labk==c;
+    cnt(sel,c)=cnt(sel,c)+1;
   end
+  [sel,labk]=max(cnt,[],2);
+  E(k)=sum(nXlabels~=labk);
 end
 
-if nargout>3,
-  cdist=dist;
-end
-if nargout>2,
-  dist(Nx*(A-1)+[1:Nx]')=inf;
-  d2=min(dist,[],2);
-  S=d2./(d1+d2);
-end
-if nargout>1,
-  A=Clabels(A)';
-end
+E=E/Nx;
