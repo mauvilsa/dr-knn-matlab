@@ -5,6 +5,9 @@ function [bestB, bestP, bestPP] = ldppr(X, XX, B0, P0, PP0, varargin)
 % Usage:
 %   [B, P, PP] = ldppr(X, XX, B0, P0, PP0, ...)
 %
+% Usage initialize prototypes:
+%   [P0, PP0] = ldppr('initP', X, XX, Np)
+%
 % Usage cross-validation (PCA & kmeans initialization):
 %   [B, P, PP] = ldppr(X, XX, maxDr, maxNp, [], ...)
 %
@@ -136,7 +139,7 @@ normalize=true;
 linearnorm=false;
 whiten=false;
 testJ=false;
-indepPP=false;
+indepPP=true;
 MAD=false;
 crossvalidate=false;
 cv_save=false;
@@ -367,7 +370,7 @@ if ~probemode,
   if devel,
     onesNy=ones(Ny,1);
   end
-  mindist=100*sqrt(1/realmax);
+  mindist=1e-6;
 
   %%% Normalization %%%
   if normalize || linearnorm,
@@ -424,6 +427,7 @@ if ~probemode,
 
   xxmu=mean(XX,2);
   xxsd=std(XX,1,2);
+  %xxsd=DD*xxsd;
   XX=(XX-xxmu(:,onesNx))./xxsd(:,onesNx);
   if devel,
     YY=(YY-xxmu(:,onesNy))./xxsd(:,onesNy);
@@ -956,7 +960,6 @@ function [E, J, fX, fP, fPP] = ldppr_index(P, PP, X, XX, work)
   Nx=work.Nx;
   onesDr=work.onesDr;
   onesDD=work.onesDD;
-  mindist=work.mindist;
   ind1=work.ind1;
   ind2=work.ind2;
 
@@ -973,7 +976,11 @@ function [E, J, fX, fP, fPP] = ldppr_index(P, PP, X, XX, work)
     X=X./xsd(onesDr,:);
     dist=1-X'*P;
   end
-  dist(dist<mindist)=mindist;
+
+  md=dist<work.mindist;
+  if sum(md(:))>0,
+    dist(md)=0.1*min(dist(~md));
+  end
   dist=1./dist;
 
   S=sum(dist,2);
@@ -1022,7 +1029,6 @@ function [E, J, fX, fP, fPP] = ldppr_sindex(P, PP, X, XX, work)
   Nx=work.Nx;
   onesDr=work.onesDr;
   onesDD=work.onesDD;
-  mindist=work.mindist;
   ind1=work.ind1;
   ind2=work.ind2;
 
@@ -1039,7 +1045,11 @@ function [E, J, fX, fP, fPP] = ldppr_sindex(P, PP, X, XX, work)
     X=X./xsd(onesDr,:);
     dist=1-X'*P;
   end
-  dist(dist<mindist)=mindist;
+
+  md=dist<work.mindist;
+  if sum(md(:))>0,
+    dist(md)=0.1*min(dist(~md));
+  end
   dist=1./dist;
 
   S=sum(dist,2);
