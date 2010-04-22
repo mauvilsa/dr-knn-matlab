@@ -427,7 +427,7 @@ if ~probemode,
 
   xxmu=mean(XX,2);
   xxsd=std(XX,1,2);
-  %xxsd=DD*xxsd;
+  xxsd=DD*xxsd;
   XX=(XX-xxmu(:,onesNx))./xxsd(:,onesNx);
   if devel,
     YY=(YY-xxmu(:,onesNy))./xxsd(:,onesNy);
