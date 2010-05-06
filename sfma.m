@@ -431,8 +431,9 @@ if ~stochastic,
 
     %%% Determine if there was improvement %%%
     mark='';
-    if (  testJ && (J>bestIJA(2)||(J==bestIJA(2)&&A>=bestIJA(3))) ) || ...
-       ( ~testJ && (A>bestIJA(3)||(A==bestIJA(3)&&J>=bestIJA(2))) ),
+    if isfinite(J) && isfinite(A) && ( ...
+       (  testJ && (J>bestIJA(2)||(J==bestIJA(2)&&A>=bestIJA(3))) ) || ...
+       ( ~testJ && (A>bestIJA(3)||(A==bestIJA(3)&&J>=bestIJA(2))) )),
       bestWUV=[Wi;Ui;Vi];
       bestIJA=[I J A bestIJA(4)+1];
       mark=' *';
@@ -615,8 +616,9 @@ else
 
       %%% Determine if there was improvement %%%
       mark='';
-      if (  testJ && (J>bestIJA(2)||(J==bestIJA(2)&&A>=bestIJA(3))) ) || ...
-         ( ~testJ && (A>bestIJA(3)||(A==bestIJA(3)&&J>=bestIJA(2))) ),
+      if isfinite(J) && isfinite(A) && ( ...
+         (  testJ && (J>bestIJA(2)||(J==bestIJA(2)&&A>=bestIJA(3))) ) || ...
+         ( ~testJ && (A>bestIJA(3)||(A==bestIJA(3)&&J>=bestIJA(2))) )),
         bestWUV=[Wi;Ui;Vi];
         bestIJA=[I J A bestIJA(4)+1];
         mark=' *';
