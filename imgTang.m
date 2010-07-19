@@ -2,7 +2,7 @@ function V = imgTang(X, imSize, krh, krv, types, basis)
 %
 % IMGTANG: Compute Image Tangent Vectors
 %
-% V = imgTang(X, imW, imH, krh, krv, types, basis)
+% V = imgTang(X, imSize, krh, krv, types, basis)
 %
 %   Input:
 %     X         - Input Data. Each column is an image.
@@ -89,11 +89,11 @@ for n=1:N,
     if types(l)>='A' && types(l)<='Z',
       v(:,l)=10*v(:,l);
     end
-
-    if basis,
-      v=orthonorm(v);
-    end
-
-    V(:,(n-1)*L+1:n*L)=v;
   end
+
+  if basis,
+    v=orthonorm(v);
+  end
+
+  V(:,(n-1)*L+1:n*L)=v;
 end
