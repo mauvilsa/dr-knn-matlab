@@ -18,8 +18,8 @@ function [mu, ind] = kmeans(X, K, varargin)
 %     ind     - Indexes of the learned means
 %
 %
-% $Revision: 86 $
-% $Date: 2010-03-03 17:12:26 +0000 (Wed, 03 Mar 2010) $
+% $Revision$
+% $Date$
 %
 
 %
