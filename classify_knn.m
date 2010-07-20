@@ -2,7 +2,8 @@ function [E, A, S, d] = classify_knn(P, Plabels, K, X, Xlabels, varargin)
 %
 % CLASSIFY_KNN: Classify using K Nearest Neighbor
 %
-% [E, A, S, dists] = classify_knn(P, Plabels, K, X, Xlabels, ...)
+% Usage:
+%   [E, A, S, dists] = classify_knn(P, Plabels, K, X, Xlabels, ...)
 %
 % Input:
 %   P        - Prototypes data matrix. Each column vector is a data point.
@@ -27,7 +28,6 @@ function [E, A, S, d] = classify_knn(P, Plabels, K, X, Xlabels, varargin)
 %   A        - Assigned Class
 %   S        - Classification score
 %   dists    - Pairwise distances
-%
 %
 % $Revision$
 % $Date$
@@ -157,6 +157,25 @@ end
 onesNp=ones(Np,1);
 onesNx=ones(Nx,1);
 onesD=ones(D,1);
+
+if exist('tangVp','var'),
+  Lp=size(tangVp,2)/Np;
+  if sum(sum(eye(Lp)-round(1000*tangVp(:,1:Lp)'*tangVp(:,1:Lp))./1000))~=0,
+    fprintf(logfile,'%s warning: tangVp not orthonormal, orthonormalizing ...\n',fn);
+    for nlp=1:Lp:size(tangVp,2),
+      tangVp(:,nlp:nlp+Lp-1)=orthonorm(tangVp(:,nlp:nlp+Lp-1));
+    end
+  end
+end
+if exist('tangVx','var'),
+  Lx=size(tangVx,2)/Nx;
+  if sum(sum(eye(Lx)-round(1000*tangVx(:,1:Lx)'*tangVx(:,1:Lx))./1000))~=0,
+    fprintf(logfile,'%s warning: tangVx not orthonormal, orthonormalizing ...\n',fn);
+    for nlx=1:Lx:size(tangVx,2),
+      tangVx(:,nlx:nlx+Lx-1)=orthonorm(tangVx(:,nlx:nlx+Lx-1));
+    end
+  end
+end
 
 % euclidean distance
 if dtype.euclidean,
