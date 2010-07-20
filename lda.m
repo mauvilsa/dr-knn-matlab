@@ -1,4 +1,4 @@
-function [B, V, pcab, SW, SB] = lda(X, Xlabels, varargin)
+function [B, V] = lda(X, Xlabels, varargin)
 %
 % LDA: Linear Discriminant Analysis
 %
@@ -13,7 +13,7 @@ function [B, V, pcab, SW, SB] = lda(X, Xlabels, varargin)
 %   'dopca',DIM    - Perform PCA before LDA (default=false)
 %   'pcab',PCAB    - Supply the PCA basis
 %   'tang',XTANGS  - Do tangent vector PCA (default=false)
-%   'tfact',TFACT  - Importance of tangents (default=0.1)
+%   'tfact',TFACT  - Importance of tangents (default=0.01)
 %
 % Output:
 %   B              - Computed LDA basis
@@ -53,7 +53,7 @@ B=[];
 V=[];
 
 dopca=false;
-tfact=0.1;
+tfact=0.01;
 
 logfile=2;
 
@@ -152,7 +152,9 @@ for c=Clabels,
   end
 end
 if exist('tang','var');
-  SW=(1/N).*(SW+2*tfact*tfact*tSW);
+  tfact=tfact*trace(SW)/trace(tSW);
+  SW=(1/N).*(SW+tfact.*tSW);
+  %SW=(1/N).*(SW+2*tfact*tfact*tSW);
 else
   SW=(1/N).*SW;
 end

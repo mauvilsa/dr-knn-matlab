@@ -14,7 +14,7 @@ function [B, V] = pca(X, varargin)
 %   'grma'         - Use gram matrix algorithm (default=false)
 %   'svda'         - Use SVD algorithm (default=false)
 %   'tang',XTANGS  - Do tangent vector PCA (default=false)
-%   'tfact',TFACT  - Importance of tangents (default=0.1)
+%   'tfact',TFACT  - Importance of tangents (default=0.01)
 %
 % Output:
 %   B              - Computed PCA basis
@@ -57,7 +57,7 @@ auto=true;
 cova=false;
 grma=false;
 svda=false;
-tfact=0.1;
+tfact=0.01;
 
 logfile=2;
 
@@ -127,7 +127,10 @@ if cova,
   cov=(1/N)*(X*X');
   if exist('tang','var'),
     L=size(tang,2)/N;
-    cov=cov+(2*tfact*tfact/(L*N)*(tang*tang'));
+    tcov=(1/(L*N))*(tang*tang');
+    tfact=tfact*trace(cov)/trace(tcov);
+    cov=cov+tfact.*tcov;
+    %cov=cov+(2*tfact*tfact).*tcov;
   end
   [B,V]=eig(cov);
   V=real(diag(V));
