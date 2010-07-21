@@ -12,7 +12,7 @@ function [B, V] = lda(X, Xlabels, varargin)
 % Input (optional):
 %   'dopca',DIM    - Perform PCA before LDA (default=false)
 %   'pcab',PCAB    - Supply the PCA basis
-%   'tang',XTANGS  - Do tangent vector PCA (default=false)
+%   'tang',XTANGS  - Do tangent vector LDA (default=false)
 %   'tfact',TFACT  - Importance of tangents (default=0.01)
 %
 % Output:
