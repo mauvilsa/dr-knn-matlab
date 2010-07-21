@@ -24,9 +24,10 @@ function [V, krh, krv] = tangVects(X, types, varargin)
 % Input (optional):
 %   'imSize',[W H]        - Image size (default=square)
 %   'bw',BW               - Tangent derivative gaussian bandwidth (default=0.5)
-%   'krh',KRH             - Supply tangent derivative kernel, horizontal (default=gaussian)
-%   'krv',KRV             - Supply tangent derivative kernel, vertical (default=gaussian)
+%   'krh',KRH             - Supply tangent derivative kernel, horizontal
+%   'krv',KRV             - Supply tangent derivative kernel, vertical
 %   'basis',(true|false)  - Compute tangent basis (default=false)
+%   'Xlabels',XLABELS     - Data class labels for kNN tangents
 %
 % Output:
 %   V         - Tangent Vectors.
@@ -76,6 +77,7 @@ while size(varargin,2)>0,
     argerr=true;
   elseif strcmp(varargin{n},'imSize') || ...
          strcmp(varargin{n},'bw') || ...
+         strcmp(varargin{n},'Xlabels') || ...
          strcmp(varargin{n},'krh') || ...
          strcmp(varargin{n},'krv'),
     eval([varargin{n},'=varargin{n+1};']);
@@ -111,6 +113,9 @@ elseif nargin-size(varargin,2)~=minargs,
 elseif ~ischar(types),
   fprintf(logfile,'%s error: types should be a string\n',fn);
   return;
+elseif exist('Xlabels','var') && (max(size(Xlabels))~=N || min(size(Xlabels))~=1),
+  fprintf(logfile,'%s error: labels must have the same size as the number of data points\n',fn);
+  return;
 end
 
 imgtangs=false;
@@ -141,6 +146,10 @@ while n<=numel(types),
     L=L+knntangs;
     if knntangs<1,
       fprintf(logfile,'%s error: type k should be preceded by the number of neighbors\n',fn);
+      return;
+    end
+    if knntangs>=N || (exist('Xlabels','var') && knntangs>=min(hist(Xlabels,unique(Xlabels)))),
+      fprintf(logfile,'%s error: not enough samples for %d nearest neighbors\n',fn,knntangs);
       return;
     end
   else
@@ -187,7 +196,7 @@ if knntangs,
   d=X'*X;
   d=x2(ones(N,1),:)'+x2(ones(N,1),:)-d-d;
   d([0:N-1]*N+[1:N])=inf;
-  [d,idx]=sort(d,2);
+  %[d,idx]=sort(d,2);
   onesK=ones(knntangs,1);
 end
 
@@ -232,15 +241,23 @@ for n=1:N,
         v(:,nl)=reshape((x+y).*im,D,1);
     end
 
-    if types(l)~='k',
+    if types(l)=='k',
+      if exist('Xlabels','var'),
+        sd=d(n,:);
+        sd(Xlabels~=Xlabels(n))=inf;
+        [sd,idx]=sort(sd);
+      else
+        [sd,idx]=sort(d(n,:));
+      end
+      v(:,nl:nl+knntangs-1)=X(:,idx(1:knntangs))-X(:,n(onesK));
+      %v(:,nl:nl+knntangs-1)=X(:,idx(n,1:knntangs))-X(:,n(onesK));
+      nl=nl+knntangs;
+    else
       v(:,l)=v(:,l).*(mag/sqrt(sum(v(:,l).*v(:,l))));
       if types(l)>='A' && types(l)<='Z',
         v(:,l)=10*v(:,l);
       end
       nl=nl+1;
-    else
-      v(:,nl:nl+knntangs-1)=X(:,idx(n,1:knntangs))-X(:,n(onesK));
-      nl=nl+knntangs;
     end
   end
 
@@ -251,6 +268,8 @@ for n=1:N,
   V(:,(n-1)*L+1:n*L)=v;
 end
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [krh, krv] = imgDervKern(krW, krH, bandwidth)
 %
 % IMGDERVKERN: Compute Image Derivative Kernel
