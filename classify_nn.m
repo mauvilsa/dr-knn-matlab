@@ -71,6 +71,8 @@ if size(Xlabels,1)<size(Xlabels,2),
 end
 
 perclass=false;
+torthonorm=false;
+
 dtype.euclidean=true;
 dtype.cosine=false;
 dtype.tangent=false;
@@ -85,7 +87,8 @@ argerr=false;
 while size(varargin,2)>0,
   if ~ischar(varargin{n}),
     argerr=true;
-  elseif strcmp(varargin{n},'perclass'),
+  elseif strcmp(varargin{n},'perclass') || ...
+         strcmp(varargin{n},'torthonorm'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~islogical(varargin{n+1}),
       argerr=true;
@@ -151,19 +154,23 @@ onesNp=ones(Np,1);
 onesNx=ones(Nx,1);
 onesD=ones(D,1);
 
-if exist('tangVp','var'),
+if exist('tangVp','var') && (dtype.rtangent || dtype.atangent || dtype.tangent),
   Lp=size(tangVp,2)/Np;
-  if sum(sum(eye(Lp)-round(1000*tangVp(:,1:Lp)'*tangVp(:,1:Lp))./1000))~=0,
-    fprintf(logfile,'%s warning: tangVp not orthonormal, orthonormalizing ...\n',fn);
+  if torthonorm || sum(sum(eye(Lp)-round(1000*tangVp(:,1:Lp)'*tangVp(:,1:Lp))./1000))~=0,
+    if ~torthonorm,
+      fprintf(logfile,'%s warning: tangVp not orthonormal, orthonormalizing ...\n',fn);
+    end
     for nlp=1:Lp:size(tangVp,2),
       tangVp(:,nlp:nlp+Lp-1)=orthonorm(tangVp(:,nlp:nlp+Lp-1));
     end
   end
 end
-if exist('tangVx','var'),
+if exist('tangVx','var') && (dtype.otangent || dtype.atangent || dtype.tangent),
   Lx=size(tangVx,2)/Nx;
-  if sum(sum(eye(Lx)-round(1000*tangVx(:,1:Lx)'*tangVx(:,1:Lx))./1000))~=0,
-    fprintf(logfile,'%s warning: tangVx not orthonormal, orthonormalizing ...\n',fn);
+  if torthonorm || sum(sum(eye(Lx)-round(1000*tangVx(:,1:Lx)'*tangVx(:,1:Lx))./1000))~=0,
+    if ~torthonorm,
+      fprintf(logfile,'%s warning: tangVx not orthonormal, orthonormalizing ...\n',fn);
+    end
     for nlx=1:Lx:size(tangVx,2),
       tangVx(:,nlx:nlx+Lx-1)=orthonorm(tangVx(:,nlx:nlx+Lx-1));
     end
