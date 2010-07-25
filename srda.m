@@ -19,8 +19,8 @@ function B = srda(X, Xlabels, varargin)
 % Output:
 %   B              - Computed SRDA basis
 %
-% $Revision: 112 $
-% $Date: 2010-07-21 17:33:54 +0200 (Wed, 21 Jul 2010) $
+% $Revision$
+% $Date$
 %
 
 %
@@ -41,7 +41,7 @@ function B = srda(X, Xlabels, varargin)
 %
 
 if strncmp(X,'-v',2),
-  unix('echo "$Revision: 112 $* $Date: 2010-07-21 17:33:54 +0200 (Wed, 21 Jul 2010) $*" | sed "s/^:/srda: revision/g; s/ : /[/g; s/ (.*)/]/g;"');
+  unix('echo "$Revision$* $Date$*" | sed "s/^:/srda: revision/g; s/ : /[/g; s/ (.*)/]/g;"');
   return;
 end
 
