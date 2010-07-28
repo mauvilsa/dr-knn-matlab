@@ -486,7 +486,8 @@ if ~probemode,
 
   %%% Initial parameter constraints %%%
   if orthonormal,
-    B0=orthonorm(B0);
+    %B0=orthonorm(B0);
+    [B0,dummy]=qr(B0);
   elseif orthogonal,
     B0=orthounit(B0);
   end
@@ -833,7 +834,8 @@ if ~stochastic,
     %%% Parameter constraints %%%
     if mod(I,orthoit)==0,
       if orthonormal,
-        Bi=orthonorm(Bi);
+        %Bi=orthonorm(Bi);
+        [Bi,dummy]=qr(Bi);
       elseif orthogonal,
         Bi=orthounit(Bi);
       end
@@ -921,7 +923,8 @@ else
     %%% Parameter constraints %%%
     if mod(I,orthoit)==0,
       if orthonormal,
-        Bi=orthonorm(Bi);
+        %Bi=orthonorm(Bi);
+        [Bi,dummy]=qr(Bi);
       elseif orthogonal,
         Bi=orthounit(Bi);
       end
@@ -931,7 +934,8 @@ else
 
   %%% Parameter constraints %%%
   if orthonormal,
-    bestB=orthonorm(bestB);
+    %bestB=orthonorm(bestB);
+    [bestB,dummy]=qr(bestB);
   elseif orthogonal,
     bestB=orthounit(bestB);
   end
