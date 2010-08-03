@@ -159,8 +159,8 @@ Xo=X-repmat(mu,1,N);
 %  end
 %end
 
-randeig=true;
-%randeig=false;
+%randeig=true;
+randeig=false;
 if ~randeig, % from d.cai paper
 
   Nc=hist(Xlabels,[1:C]);
@@ -196,10 +196,10 @@ end
 if brute,
   %fprintf(logfile,'%s brute force mode\n',fn);
 
-  ST=(1/N)*(Xo*Xo');
-  %ST=ST+regu*trace(ST)*eye(D);
   %ST=Xo*Xo';
-  ST=ST+regu*eye(D);
+  ST=(1/N)*(Xo*Xo');
+  %ST=ST+regu*eye(D);
+  ST=ST+regu*trace(ST)*eye(D);
   SB=zeros(D);
   for c=1:C,
     sel=Xlabels==c;
@@ -220,10 +220,11 @@ elseif (~exist('tang','var') && D>N) || ...
        ( exist('tang','var') && D>N*L),
   %fprintf(logfile,'%s inner product mode\n',fn);
 
-  %S=(1/N)*(Xo'*Xo);
-  %S([0:N-1]*N+[1:N])=S([0:N-1]*N+[1:N])+regu*trace(S);
-  S=Xo'*Xo;
-  S([0:N-1]*N+[1:N])=S([0:N-1]*N+[1:N])+regu;
+  %S=Xo'*Xo;
+  S=(1/N)*(Xo'*Xo);
+  %S([0:N-1]*N+[1:N])=S([0:N-1]*N+[1:N])+regu;
+  %S([0:N-1]*N+[1:N])=S([0:N-1]*N+[1:N])+regu*trace(S); % this is wrong? trace increases proportional to N instead of D
+  S([0:N-1]*N+[1:N])=S([0:N-1]*N+[1:N])+(D/N)*regu*trace(S);
   R=chol(S);
 
   B=Xo*(R\(R'\Y));
@@ -231,10 +232,10 @@ elseif (~exist('tang','var') && D>N) || ...
 else
   %fprintf(logfile,'%s outer product mode\n',fn);
 
-  %S=(1/N)*(Xo*Xo');
-  %S([0:D-1]*D+[1:D])=S([0:D-1]*D+[1:D])+regu*trace(S);
-  S=Xo*Xo';
-  S([0:D-1]*D+[1:D])=S([0:D-1]*D+[1:D])+regu;
+  %S=Xo*Xo';
+  S=(1/N)*(Xo*Xo');
+  %S([0:D-1]*D+[1:D])=S([0:D-1]*D+[1:D])+regu;
+  S([0:D-1]*D+[1:D])=S([0:D-1]*D+[1:D])+regu*trace(S);
   R=chol(S);
 
   B=R\(R'\(Xo*Y));
@@ -245,21 +246,21 @@ if ~brute,
   V=sqrt(sum(B.*B,1))';
   B=B.*repmat(1./V',D,1);
 
-  %if nargout>1,
-  %  Xo=B'*(X-repmat(mu,1,N));
-  %  ST=(1/N)*(Xo*Xo');
-  %  SB=zeros(size(B,2));
-  %  for c=1:C,
-  %    sel=Xlabels==c;
-  %    muc=mean(Xo(:,sel),2);
-  %    SB=SB+(sum(sel)/N).*muc*muc';
-  %  end
-  %  V=diag(SB)./diag(ST);
-  %end
+  if nargout>1,
+    Xo=B'*(X-repmat(mu,1,N));
+    ST=(1/N)*(Xo*Xo');
+    SB=zeros(size(B,2));
+    for c=1:C,
+      sel=Xlabels==c;
+      muc=mean(Xo(:,sel),2);
+      SB=SB+(sum(sel)/N).*muc*muc';
+    end
+    V=diag(SB)./diag(ST);
+  end
 
-  %[srt,idx]=sort(-1*V);
-  %V=V(idx);
-  %B=B(:,idx);
+  [srt,idx]=sort(-1*V);
+  V=V(idx);
+  B=B(:,idx);
 end
 
 if dopca,
