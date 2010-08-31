@@ -1,8 +1,12 @@
-function [bestW, bestU, bestV] = sfma_new(POS, NEG, W0, U0, V0, varargin)
+function [bestW, bestU, bestV] = sfma(POS, NEG, W0, U0, V0, varargin)
 %
 % SFMA: Score Fusion by Maximizing the AUC
 %
-% [W, U, V] = sfma(POS, NEG, W0, U0, V0, ...)
+% Usage:
+%   [W, U, V] = sfma(POS, NEG, W0, U0, V0, ...)
+%
+% Usage (fuse scores):
+%   FSCORES = sfma('fuse',SCORES,W,U,V)
 %
 % Input:
 %   POS                        - Positive scores matrix
@@ -41,19 +45,20 @@ function [bestW, bestU, bestV] = sfma_new(POS, NEG, W0, U0, V0, varargin)
 %   U                          - Final learned sigmoid slopes
 %   V                          - Final learned sigmoid displacements
 %
-%
-% Reference:
+% References:
 %
 %   M. Villegas and R. Paredes. "Score Fusion by Maximizing the Area
 %   Under the ROC Curve." IbPria 2009.
 %
+%   M. Villegas and R. Paredes. "Fusion of Qualities for Frame Selection
+%   in Video Face Verification" ICPR 2010.
 %
 % $Revision$
 % $Date$
 %
 
 %
-% Copyright (C) 2008-2009 Mauricio Villegas (mvillegas AT iti.upv.es)
+% Copyright (C) 2008-2010 Mauricio Villegas (mvillegas AT iti.upv.es)
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -198,6 +203,12 @@ end
 
 [P,D]=size(POS);
 N=size(NEG,1);
+
+if strncmp(POS,'fuse',4),
+  bestW=1./(1+exp(U0(ones(N,1),:).*(V(ones(N,1),:)-NEG)));
+  bestW=bestW*W0';
+  return;
+end
 
 %%% Error detection %%%
 if probemode,

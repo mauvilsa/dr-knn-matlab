@@ -1,13 +1,13 @@
-function [V, krh, krv] = tangVects(X, types, varargin)
+function [V, Vidx] = tangVects(X, types, varargin)
 %
 % TANGVECTS: Compute Tangent Vectors from Data
 %
 % Usage:
-%   V = tangVect(X, types, ...)
+%   [V, Vidx] = tangVect(X, types, ...)
 %
 % Input:
 %   X         - Input Data. Each column is an image.
-%   types     - Tangent types [hvrspdtHVDA]+[k]K.
+%   types     - Tangent types [hvrspdtHV]+[k]K.
 %               h: image horizontal translation
 %               v: image vertical translation
 %               r: image rotation
@@ -17,8 +17,6 @@ function [V, krh, krv] = tangVects(X, types, varargin)
 %               t: image trace thickening
 %               H: image horizontal illumination
 %               V: image vertical illumination
-%               D: image diagonal\ illumination
-%               A: image diagonal/ illumination
 %               k: K nearest neighbors
 %
 % Input (optional):
@@ -31,6 +29,7 @@ function [V, krh, krv] = tangVects(X, types, varargin)
 %
 % Output:
 %   V         - Tangent Vectors.
+%   Vidx      - Indexes to the vectors in X from which the tangents correspond.
 %
 % $Revision$
 % $Date$
@@ -63,6 +62,7 @@ minargs=2;
 
 %%% Default values %%%
 V=[];
+Vidx=[];
 
 bw=0.5;
 basis=false;
@@ -125,27 +125,20 @@ n=1;
 while n<=numel(types),
   if types(n)=='h' || types(n)=='v' || types(n)=='r' || types(n)=='s' || ...
      types(n)=='p' || types(n)=='d' || types(n)=='t' || ...
-     types(n)=='H' || types(n)=='V' || types(n)=='D' || types(n)=='A',
+     types(n)=='H' || types(n)=='V',
     imgtangs=true;
     L=L+1;
     n=n+1;
-  elseif types(n)=='k',
-    n=n+1;
-    k=1;
-    knntangs='0';
-    while n<=numel(types),
-      if types(n)<'0' || types(n)>'9',
-        break;
-      else
-        knntangs(k)=types(n);
-        types(n)=[];
-        k=k+1;
-      end
+  elseif types(n)=='k' || types(n)=='K',
+    if types(n)=='K',
+      rmtangs=true;
     end
-    knntangs=str2num(knntangs);
+    n=n+1;
+    knntangs=str2num(types(n:end));
+    types(n:end)=[];
     L=L+knntangs;
-    if knntangs<1,
-      fprintf(logfile,'%s error: type k should be preceded by the number of neighbors\n',fn);
+    if sum(size(knntangs))==0 || knntangs<1,
+      fprintf(logfile,'%s error: type k should be the last one and be followed by the number of neighbors\n',fn);
       return;
     end
     if knntangs>=N || (exist('Xlabels','var') && knntangs>=min(hist(Xlabels,unique(Xlabels)))),
@@ -153,13 +146,13 @@ while n<=numel(types),
       return;
     end
   else
-    fprintf(logfile,'%s error: types should be among [hvrspdtkHVDA]\n',fn);
+    fprintf(logfile,'%s error: types should be among [hvrspdtkHV]\n',fn);
     return;
   end
 end
 
 if numel(types)~=numel(unique(types)),
-  fprintf(logfile,'%s error: type should not be repeated\n',fn);
+  fprintf(logfile,'%s error: types should not be repeated\n',fn);
   return;
 end
 
@@ -196,11 +189,16 @@ if knntangs,
   d=X'*X;
   d=x2(ones(N,1),:)'+x2(ones(N,1),:)-d-d;
   d([0:N-1]*N+[1:N])=inf;
-  %[d,idx]=sort(d,2);
   onesK=ones(knntangs,1);
 end
 
+if exits('rmtangs','var'),
+  rmtangs=false(N*L,1);
+end
+
 V=zeros(D,N*L);
+Vidx=repmat([1:N],L,1);
+Vidx=Vidx(:);
 
 for n=1:N,
   if imgtangs,
@@ -235,10 +233,6 @@ for n=1:N,
         v(:,nl)=reshape(x.*im,D,1);
       case 'V'
         v(:,nl)=reshape(y.*im,D,1);
-      case 'A'
-        v(:,nl)=reshape((x-y).*im,D,1);
-      case 'D'
-        v(:,nl)=reshape((x+y).*im,D,1);
     end
 
     if types(l)=='k',
@@ -250,8 +244,15 @@ for n=1:N,
         [sd,idx]=sort(d(n,:));
       end
       v(:,nl:nl+knntangs-1)=X(:,idx(1:knntangs))-X(:,n(onesK));
-      %v(:,nl:nl+knntangs-1)=X(:,idx(n,1:knntangs))-X(:,n(onesK));
       nl=nl+knntangs;
+    elseif types(l)=='K',
+      [sd,idx]=sort(d(n,:));
+      sf=find(Xlabels(idx)~=Xlabels(n));
+      kn=min(knntangs,sf(1)-1);
+      v(:,nl:nl+kn-1)=X(:,idx(1:kn))-X(:,n(ones(kn,1)));
+      v(:,nl+kn:nl+knntangs-1)=[];
+      rmtangs((n-1)*L+nl+kn:n*L)=true;
+      nl=nl+kn;
     else
       v(:,l)=v(:,l).*(mag/sqrt(sum(v(:,l).*v(:,l))));
       if types(l)>='A' && types(l)<='Z',
@@ -262,12 +263,16 @@ for n=1:N,
   end
 
   if basis,
-    v=orthonorm(v);
+    [v,dummy]=qr(v);
   end
 
-  V(:,(n-1)*L+1:n*L)=v;
+  V(:,(n-1)*L+1:(n-1)*L+size(v,2))=v;
 end
 
+if exist('rmtangs','var'),
+  V(:,rmtangs)=[];
+  Vidx(rmtangs)=[];
+end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [krh, krv] = imgDervKern(krW, krH, bandwidth)
