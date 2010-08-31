@@ -96,7 +96,7 @@ elseif nargin-size(varargin,2)~=minargs,
   fprintf(logfile,'%s error: not enough input arguments\n',fn);
   return;
 elseif max(size(Xlabels))~=N || min(size(Xlabels))~=1,
-  fprintf(logfile,'%s error: labels must have the same size as the number of data points\n',fn);
+  fprintf(logfile,'%s error: there must be the same number of labels as data points\n',fn);
   return;
 elseif exist('tang','var') && mod(size(tang,2),N)~=0,
   fprintf(logfile,'%s error: number of tangents should be a multiple of the number of samples\n',fn);
@@ -129,6 +129,9 @@ if dopca;
   end
 end
 
+if size(Xlabels,2)~=1,
+  Xlabels=Xlabels';
+end
 Clabels=unique(Xlabels)';
 C=size(Clabels,2);
 oXlabels=Xlabels;
