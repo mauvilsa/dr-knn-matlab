@@ -172,3 +172,7 @@ B=B.*repmat(1./sqrt(sum(B.*B,1)),D,1);
 if dopca,
   B=pcab*B;
 end
+
+if sum(isinf(V))>0,
+  fprintf(logfile,'%s error: infinite generalized eigenvalues\n',fn);
+end
