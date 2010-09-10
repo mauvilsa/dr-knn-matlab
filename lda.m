@@ -6,18 +6,19 @@ function [B, V] = lda(X, Xlabels, varargin)
 %   [B, V] = lda(X, Xlabels, ...)
 %
 % Input:
-%   X              - Data matrix. Each column vector is a data point.
-%   Xlabels        - Data class labels.
+%   X                   - Data matrix. Each column vector is a data point.
+%   Xlabels             - Data class labels.
 %
 % Input (optional):
-%   'dopca',DIM    - Perform PCA before LDA (default=false)
-%   'pcab',PCAB    - Supply the PCA basis
-%   'tang',XTANGS  - Do tangent vector LDA (default=false)
-%   'tfact',TFACT  - Importance of tangents (default=0.01)
+%   'dopca',DIM         - Perform PCA before LDA (default=false)
+%   'pcab',PCAB         - Supply the PCA basis
+%   'tang',XTANGS       - Do tangent vector LDA (default=false)
+%   'tfact',TFACT       - Importance of tangents (default=0.01)
+%   'nda',(true|alpha)  - Use nonparametric between scatter (default=false)
 %
 % Output:
-%   B              - Computed LDA basis
-%   V              - Computed LDA eigenvalues
+%   B                   - Computed LDA basis
+%   V                   - Computed LDA eigenvalues
 %
 % $Revision$
 % $Date$
@@ -54,6 +55,7 @@ V=[];
 
 dopca=false;
 tfact=0.01;
+nda=false;
 
 logfile=2;
 
@@ -66,6 +68,7 @@ while size(varargin,2)>0,
   elseif strcmp(varargin{n},'tfact') || ...
          strcmp(varargin{n},'dopca') || ...
          strcmp(varargin{n},'pcab') || ...
+         strcmp(varargin{n},'nda') || ...
          strcmp(varargin{n},'tang'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~isnumeric(varargin{n+1}),
@@ -135,6 +138,30 @@ end
 mu=mean(X,2);
 SB=zeros(D);
 SW=zeros(D);
+
+if nda || ~islogical(nda),
+  onesN=ones(N,1);
+  X2=sum((X.^2),1);
+  dd=X'*X;
+  dd=X2(onesN,:)+X2(onesN,:)'-dd-dd;
+  dd([0:N-1].*N+[1:N])=inf;
+  sel=Xlabels(:,onesN)'==Xlabels(:,onesN);
+  ds=dd;
+  dd(sel)=inf;
+  [dd,id]=min(dd,[],2);
+  Xd=X-X(:,id);
+  if ~islogical(nda),
+    ds(~sel)=inf;
+    [ds,is]=min(ds,[],2);
+    ds=sqrt(ds).^nda;
+    dd=sqrt(dd).^nda;
+    w=sqrt((min(dd,ds)./(dd+ds)))';
+    Xd=Xd.*w(ones(D,1),:);
+  end
+  SB=Xd*Xd';
+  nda=true;
+end
+
 for c=Clabels,
   sel=Xlabels==c;
   Xc=X(:,sel);
@@ -142,8 +169,10 @@ for c=Clabels,
   muc=mean(Xc,2);
   Xc=Xc-repmat(muc,1,Nc);
   SW=SW+Xc*Xc';
-  muc=muc-mu;
-  SB=SB+Nc.*muc*muc';
+  if ~nda,
+    muc=muc-mu;
+    SB=SB+Nc.*muc*muc';
+  end
   if exist('tang','var');
     sel=sel(:,ones(L,1))';
     sel=sel(:);
@@ -164,7 +193,9 @@ SB=(1/N).*SB;
 [B,V]=eig(SB,SW);
 V=real(diag(V));
 [srt,idx]=sort(-1*V);
-idx=idx(1:min([D,C-1]));
+if ~nda,
+  idx=idx(1:min([D,C-1]));
+end
 V=V(idx);
 B=B(:,idx);
 B=B.*repmat(1./sqrt(sum(B.*B,1)),D,1);

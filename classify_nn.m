@@ -161,7 +161,9 @@ if exist('tangVp','var') && (dtype.rtangent || dtype.atangent || dtype.tangent),
       fprintf(logfile,'%s warning: tangVp not orthonormal, orthonormalizing ...\n',fn);
     end
     for nlp=1:Lp:size(tangVp,2),
-      tangVp(:,nlp:nlp+Lp-1)=orthonorm(tangVp(:,nlp:nlp+Lp-1));
+      %tangVp(:,nlp:nlp+Lp-1)=orthonorm(tangVp(:,nlp:nlp+Lp-1));
+      [orthoVp,dummy]=qr(tangVp(:,nlp:nlp+Lp-1),0);
+      tangVp(:,nlp:nlp+Lp-1)=orthoVp;
     end
   end
 end
@@ -172,7 +174,9 @@ if exist('tangVx','var') && (dtype.otangent || dtype.atangent || dtype.tangent),
       fprintf(logfile,'%s warning: tangVx not orthonormal, orthonormalizing ...\n',fn);
     end
     for nlx=1:Lx:size(tangVx,2),
-      tangVx(:,nlx:nlx+Lx-1)=orthonorm(tangVx(:,nlx:nlx+Lx-1));
+      %tangVx(:,nlx:nlx+Lx-1)=orthonorm(tangVx(:,nlx:nlx+Lx-1));
+      [orthoVx,dummy]=qr(tangVx(:,nlx:nlx+Lx-1),0);
+      tangVx(:,nlx:nlx+Lx-1)=orthoVx;
     end
   end
 end
@@ -277,6 +281,7 @@ elseif dtype.tangent,
       Arp=Vpx*iVxx*Vpx'-Vpp;
       Alx=(Vpx'*iVpp*Vp'-Vx')*(x-p);
       Arx=Vxx-Vpx'*iVpp*Vpx;
+      keyboard
       ap=Arp\Alp;
       ax=Arx\Alx;
       xx=x+Vx*ax;

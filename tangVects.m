@@ -192,7 +192,7 @@ if knntangs,
   onesK=ones(knntangs,1);
 end
 
-if exits('rmtangs','var'),
+if exist('rmtangs','var'),
   rmtangs=false(N*L,1);
 end
 
@@ -263,7 +263,7 @@ for n=1:N,
   end
 
   if basis,
-    [v,dummy]=qr(v);
+    [v,dummy]=qr(v,0);
   end
 
   V(:,(n-1)*L+1:(n-1)*L+size(v,2))=v;
