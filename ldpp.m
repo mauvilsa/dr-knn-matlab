@@ -1,4 +1,4 @@
-function [bestB, bestP, Plabels, info] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
+function [bestB, bestP, Plabels, info, other] = ldpp(X, Xlabels, B0, P0, Plabels, varargin)
 %
 % LDPP: Learning Discriminative Projections and Prototypes for NN Classification
 %
@@ -32,8 +32,11 @@ function [bestB, bestP, Plabels, info] = ldpp(X, Xlabels, B0, P0, Plabels, varar
 %   'orthoit',OIT              - Orthogonalize every OIT (default=1)
 %   'orthonormal',(true|false) - Orthonormal projection base (default=true)
 %   'orthogonal',(true|false)  - Orthogonal projection base (default=false)
-%   'euclidean',(true|false)   - Euclidean distance (default=true)
-%   'cosine',(true|false)      - Cosine distance (default=false)
+%   'euclidean'                - Euclidean distance (default=true)
+%   'cosine'                   - Cosine distance (default=false)
+%   'rtangent'                 - Ref. tangent distance (default=false)
+%   'otangent'                 - Obs. tangent distance (default=false)
+%   'atangent'                 - Avg. tangent distance (default=false)
 %
 % Data normalization options:
 %   'normalize',(true|false)   - Normalize training data (default=true)
@@ -51,6 +54,23 @@ function [bestB, bestP, Plabels, info] = ldpp(X, Xlabels, B0, P0, Plabels, varar
 %   'verbose',(true|false)     - Verbose (default=true)
 %   'stats',STAT               - Statistics every STAT (default=10)
 %   'logfile',FID              - Output log file (default=stderr)
+%
+% Tangent distances options:
+%   tangtypes                  - Tangent types [hvrspdtHV]+[k]K (default='k5')
+%                                h: image horizontal translation
+%                                v: image vertical translation
+%                                r: image rotation
+%                                s: image scaling
+%                                p: image parallel hyperbolic transformation
+%                                d: image diagonal hyperbolic transformation
+%                                t: image trace thickening
+%                                H: image horizontal illumination
+%                                V: image vertical illumination
+%                                k: K nearest neighbors
+%   'imSize',[W H]             - Image size (default=square)
+%   'bw',BW                    - Tangent derivative gaussian bandwidth (default=0.5)
+%   'krh',KRH                  - Supply tangent derivative kernel, horizontal
+%   'krv',KRV                  - Supply tangent derivative kernel, vertical
 %
 % Other options:
 %   'devel',Y,Ylabels          - Set the development set (default=false)
@@ -124,8 +144,15 @@ stocheckfull=false;
 stochfinalexact=true;
 orthonormal=true;
 orthogonal=false;
-euclidean=true;
-cosine=false;
+dtype.euclidean=true;
+dtype.cosine=false;
+dtype.tangent=false;
+dtype.rtangent=false;
+dtype.otangent=false;
+dtype.atangent=false;
+%euclidean=true;
+%cosine=false;
+tangtypes='k5';
 normalize=true;
 linearnorm=false;
 whiten=false;
@@ -141,7 +168,7 @@ verbose=true;
 n=1;
 argerr=false;
 while size(varargin,2)>0,
-  if ~ischar(varargin{n}) || size(varargin,2)<n+1,
+  if ~ischar(varargin{n}),% || size(varargin,2)<n+1,
     argerr=true;
   elseif strcmp(varargin{n},'probemode'),
     eval([varargin{n},'=varargin{n+1};']);
@@ -165,6 +192,10 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'cv_Dr') || ...
          strcmp(varargin{n},'cv_rateB') || ...
          strcmp(varargin{n},'cv_rateP') || ...
+         strcmp(varargin{n},'imSize') || ...
+         strcmp(varargin{n},'bw') || ...
+         strcmp(varargin{n},'krh') || ...
+         strcmp(varargin{n},'krv') || ...
          strcmp(varargin{n},'logfile'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~isnumeric(varargin{n+1}) || sum(sum(varargin{n+1}<0))~=0,
@@ -174,8 +205,6 @@ while size(varargin,2)>0,
     end
   elseif strcmp(varargin{n},'orthonormal') || ...
          strcmp(varargin{n},'orthogonal') || ...
-         strcmp(varargin{n},'euclidean') || ...
-         strcmp(varargin{n},'cosine') || ...
          strcmp(varargin{n},'normalize') || ...
          strcmp(varargin{n},'linearnorm') || ...
          strcmp(varargin{n},'whiten') || ...
@@ -186,6 +215,8 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'cv_save') || ...
          strcmp(varargin{n},'initP') || ...
          strcmp(varargin{n},'verbose'),
+         %strcmp(varargin{n},'euclidean') || ...
+         %strcmp(varargin{n},'cosine') || ...
     eval([varargin{n},'=varargin{n+1};']);
     if ~islogical(varargin{n+1}),
       argerr=true;
@@ -195,10 +226,10 @@ while size(varargin,2)>0,
           orthogonal=false;
         elseif strcmp(varargin{n},'orthogonal'),
           orthonormal=false;
-        elseif strcmp(varargin{n},'euclidean'),
-          cosine=false;
-        elseif strcmp(varargin{n},'cosine'),
-          euclidean=false;
+        %elseif strcmp(varargin{n},'euclidean'),
+        %  cosine=false;
+        %elseif strcmp(varargin{n},'cosine'),
+        %  euclidean=false;
         elseif strcmp(varargin{n},'normalize'),
           whiten=false;    linearnorm=false;
         elseif strcmp(varargin{n},'linearnorm'),
@@ -209,6 +240,25 @@ while size(varargin,2)>0,
       end
       n=n+2;
     end
+  elseif strcmp(varargin{n},'tangtypes'),
+    eval([varargin{n},'=varargin{n+1};']);
+    if ~ischar(varargin{n+1}),
+      argerr=true;
+    else
+      n=n+2;
+    end
+  elseif strcmp(varargin{n},'euclidean') || ...
+         strcmp(varargin{n},'rtangent') || ...
+         strcmp(varargin{n},'otangent') || ...
+         strcmp(varargin{n},'atangent') || ...
+         strcmp(varargin{n},'cosine'),
+    dtype.euclidean=false;
+    dtype.cosine=false;
+    dtype.rtangent=false;
+    dtype.otangent=false;
+    dtype.atangent=false;
+    eval(['dtype.',varargin{n},'=true;']);
+    n=n+1;
   elseif strcmp(varargin{n},'devel'),
     devel=true;
     Y=varargin{n+1};
@@ -262,6 +312,10 @@ Np=size(P0,2);
 
 %%% Probe mode %%%
 if exist('probemode','var'),
+  %probevars=fieldnames(probemode);
+  %for n=1:max(size(probevars)),
+  %  eval([probevars{n} '=probemode.' probevars{n} ';']);
+  %end
   rateB=probemode.rateB;
   rateP=probemode.rateP;
   minI=probemode.minI;
@@ -271,7 +325,9 @@ if exist('probemode','var'),
   orthoit=probemode.orthoit;
   orthonormal=probemode.orthonormal;
   orthogonal=probemode.orthogonal;
-  euclidean=probemode.euclidean;
+  %euclidean=probemode.euclidean;
+  dtype=probemode.dtype;
+  tangcfg=probemode.tangcfg;
   testJ=probemode.testJ;
   stochastic=probemode.stochastic;
   devel=probemode.devel;
@@ -372,16 +428,20 @@ if ~probemode,
   end
 
   %%% Normalization %%%
+  oX=X;
+  if devel,
+    oY=Y;
+  end
   if normalize || linearnorm,
     xmu=mean(X,2);
     xsd=std(X,1,2);
-    if euclidean,
+    if dtype.euclidean || dtype.rtangent || dtype.otangent || dtype.atangent,
       xsd=Dr*xsd;
     end
     if linearnorm,
       xsd=max(xsd)*ones(size(xsd));
     end
-    if issparse(X) && ~cosine,
+    if issparse(X) && ~dtype.cosine,
       xmu=full(xmu);
       xsd=full(xsd);
       X=X./xsd(:,onesNx);
@@ -411,7 +471,7 @@ if ~probemode,
     W=W(:,V>eps);
     V=V(V>eps);
     W=W.*repmat((1./sqrt(V))',D,1);
-    if euclidean,
+    if dtype.euclidean || dtype.rtangent || dtype.otangent || dtype.atangent,
       W=(1/Dr).*W;
     end
     xmu=mean(X,2);
@@ -459,9 +519,79 @@ if ~probemode,
   for c=1:C,
     cfact(Xlabels==c)=prior(c)/sum(Xlabels==c);
   end
-  if euclidean,
+  if dtype.euclidean || dtype.rtangent || dtype.otangent || dtype.atangent,
     cfact=2*cfact;
     jfact=0.5;
+  end
+
+  %%% Tangent vectors %%%
+  if dtype.rtangent || dtype.otangent || dtype.atangent,
+    dtype.tangent=true;
+    tangcfg.imgtangcfg=struct;
+    if exist('imSize','var'),
+      tangcfg.imgtangcfg.imSize=imSize;
+    end
+    if exist('bw','var'),
+      tangcfg.imgtangcfg.bw=bw;
+    end
+    if exist('krh','var'),
+      tangcfg.imgtangcfg.krh=krh;
+    end
+    if exist('krv','var'),
+      tangcfg.imgtangcfg.krv=krv;
+    end
+    tangcfg.imgtangs=false;
+    tangcfg.knntangs=false;
+    %tangcfg.devel=devel;
+    tangcfg.dtype=dtype;
+    tangcfg.onesNp=onesNp;
+    tangcfg.Np=Np;
+    tangcfg.D=D;
+    tangcfg.Vx=[];
+    tangcfg.Vp=[];
+    if sum(tangtypes=='k')>0,
+      idx=find(tangtypes=='k');
+      tangcfg.knntangs=str2num(tangtypes(idx+1:end));
+      tangcfg.knntypes=tangtypes(idx:end);
+      tangtypes=tangtypes(1:idx-1);
+      if dtype.otangent || dtype.atangent,
+        tangcfg.Xlabels=Xlabels;
+        %if devel,
+        %  tangcfg.Ylabels=Ylabels;
+        %end
+      end
+      %if dtype.rtangent || dtype.atangent,
+      %  tangcfg.Plabels=Plabels;
+      %end
+    end
+    if numel(tangtypes)>0,
+      tangcfg.imgtangs=numel(tangtypes);
+      tangcfg.imgtypes=tangtypes;
+      tangcfg.normalize=normalize;
+      tangcfg.linearnorm=linearnorm;
+      tangcfg.whiten=whiten;
+      if dtype.rtangent || dtype.atangent,
+        if normalize || linearnorm,
+          tangcfg.xmu=xmu;
+          tangcfg.xsd=xsd;
+        elseif whiten,
+          tangcfg.IW=IW;
+          tangcfg.xmu=xmu;
+        end
+      end
+      if dtype.otangent || dtype.atangent,
+        tangcfg.oVx=tangVects(oX,tangcfg.imgtypes,tangcfg.imgtangcfg);
+        if tangcfg.knntangs,
+          tangcfg.knntangsx=repmat([false(tangcfg.imgtangs,1);true(tangcfg.knntangs,1)],1,Nx);
+          tangcfg.knntangsx=tangcfg.knntangsx(:);
+          tangcfg.Vx=zeros(Dr,numel(tangcfg.knntangsx));
+        end
+        %if devel,
+        %  tangcfg.oVy=tangVects(oY,tangcfg.imgtypes,tangcfg.imgtangcfg);
+        %end
+      end
+    end
+    tangcfg.L=tangcfg.knntangs+tangcfg.imgtangs;
   end
 
   %%% Stochastic preprocessing %%%
@@ -501,10 +631,15 @@ if ~probemode,
   work.Nx=Nx;
   work.C=C;
   work.Dr=Dr;
-  work.euclidean=euclidean;
+  %work.euclidean=euclidean;
+  work.dtype=dtype;
   work.cfact=cfact;
   work.jfact=jfact;
   work.prior=prior;
+  if dtype.tangent,
+    work.tangcfg=tangcfg;
+  end
+  work.L=tangcfg.L;
 
   if stochastic,
     swork=work;
@@ -520,6 +655,7 @@ if ~probemode,
     dwork.sel=Plabels(:,onesNy)'==Ylabels(:,onesNp);
     dwork.Nx=Ny;
     dwork.onesNx=onesNy;
+    %dwork.L=tangcfg.L;
   end
 
   tm=toc;
@@ -582,7 +718,9 @@ if crossvalidate,
   cv_cfg.orthoit=orthoit;
   cv_cfg.orthonormal=orthonormal;
   cv_cfg.orthogonal=orthogonal;
-  cv_cfg.euclidean=euclidean;
+  %cv_cfg.euclidean=euclidean;
+  cv_cfg.dtype=dtype;
+  cv_cfg.tangcfg=tangcfg;
   cv_cfg.testJ=testJ;
   cv_cfg.stochastic=stochastic;
   cv_cfg.devel=true;
@@ -618,7 +756,7 @@ if crossvalidate,
     for c=1:C,
       cv_cfact(c)=prior(c)/sum(cv_Xlabels==c);
     end
-    if euclidean,
+    if dtype.euclidean || dtype.tangent,
       cv_cfact=2*cv_cfact;
     end
     cv_wk.cfact=cv_cfact(cv_Xlabels);
@@ -789,7 +927,14 @@ if ~stochastic,
 
     %%% Compute statistics %%%
     rP=Bi'*Pi;
-    [E,J,fX,fP]=ldpp_index(rP,Plabels,Bi'*X,Xlabels,work);
+    rX=Bi'*X;
+    if dtype.tangent,
+      tangcfg.rX=rX;
+      tangcfg=comptangs(Bi,Pi,tangcfg);
+      work.Vx=tangcfg.Vx;
+      work.Vp=tangcfg.Vp;
+    end
+    [E,J,fX,fP]=ldpp_index(rP,Plabels,rX,Xlabels,work);
     if devel,
       E=ldpp_index(rP,Plabels,Bi'*Y,Ylabels,dwork);
     end
@@ -865,6 +1010,10 @@ else
     sX=X(:,randn);
 
     %%% Compute statistics %%%
+    if work.dtype.tangent,
+      fprintf(logfile,'%s error: stochastic for tangent distances not implemented\n',fn);
+      return;
+    end
     [Ei,Ji,fX,fP]=ldpp_sindex(Bi'*Pi,Plabels,Bi'*sX,randc,swork);
     if ~stocheckfull,
       J=0.5*(prevJ+Ji);
@@ -981,9 +1130,23 @@ if nargout>2,
   Plabels=clab(Plabels);
 end
 
+if nargout>4,
+  other=struct;
+  if dtype.tangent,
+    tangcfg.rX=bestB'*X;
+    tangcfg=comptangs(bestB,bestP,tangcfg);
+    if dtype.otangent || dtype.atangent,
+      other.Vx=tangcfg.Vx;
+    end
+    if dtype.rtangent || dtype.atangent,
+      other.Vp=tangcfg.Vp;
+    end
+  end
+end
+
 %%% Compensate for normalization in the final parameters %%%
 if normalize || linearnorm,
-  if issparse(X) && ~cosine,
+  if issparse(X) && ~dtype.cosine,
     bestP=bestP.*xsd(xsd~=0,onesNp);
   else
     bestP=bestP.*xsd(xsd~=0,onesNp)+xmu(xsd~=0,onesNp);
@@ -1018,17 +1181,51 @@ function [E, J, fX, fP] = ldpp_index(P, Plabels, X, Xlabels, work)
   prior=work.prior;
 
   %%% Compute distances %%%
-  if work.euclidean,
+  if work.dtype.euclidean,
     x2=sum((X.^2),1)';
     p2=sum((P.^2),1);
     ds=X'*P;
     ds=x2(:,work.onesNp)+p2(work.onesNx,:)-ds-ds;
-  else %elseif cosine,
+  elseif work.dtype.cosine,
     psd=sqrt(sum(P.*P,1));
     P=P./psd(onesDr,:);
     xsd=sqrt(sum(X.*X,1));
     X=X./xsd(onesDr,:);
     ds=1-X'*P;
+  elseif work.dtype.rtangent,
+    ds=zeros(Nx,Np);
+    nlp=1;
+    for np=1:Np,
+      dXP=X-P(:,np(work.onesNx));
+      VdXP=work.Vp(:,nlp:nlp+work.L-1)'*dXP;
+      ds(:,np)=(sum(dXP.*dXP,1)-sum(VdXP.*VdXP,1))';
+      nlp=nlp+work.L;
+    end
+  elseif work.dtype.otangent,
+    ds=zeros(Nx,Np);
+    nlx=1;
+    for nx=1:Nx,
+      dXP=X(:,nx(work.onesNp))-P;
+      VdXP=work.Vx(:,nlx:nlx+work.L-1)'*dXP;
+      ds(nx,:)=sum(dXP.*dXP,1)-sum(VdXP.*VdXP,1);
+      nlx=nlx+work.L;
+    end
+  elseif work.dtype.atangent,
+    ds=zeros(Nx,Np);
+    nlp=1;
+    for np=1:Np,
+      dXP=X-P(:,np(work.onesNx));
+      VdXP=work.Vp(:,nlp:nlp+work.L-1)'*dXP;
+      ds(:,np)=(sum(dXP.*dXP,1)-0.5*sum(VdXP.*VdXP,1))';
+      nlp=nlp+work.L;
+    end
+    nlx=1;
+    for nx=1:Nx,
+      dXP=X(:,nx(work.onesNp))-P;
+      VdXP=work.Vx(:,nlx:nlx+work.L-1)'*dXP;
+      ds(nx,:)=ds(nx,:)-0.5*sum(VdXP.*VdXP,1);
+      nlx=nlx+work.L;
+    end
   end
 
   dd=ds;
@@ -1061,17 +1258,72 @@ function [E, J, fX, fP] = ldpp_index(P, Plabels, X, Xlabels, work)
 
     fP=zeros(Dr,Np);
 
-    if work.euclidean,
+    if work.dtype.euclidean,
       Xs=(X-P(:,is)).*sfact(:,onesDr)';
       Xd=(X-P(:,id)).*dfact(:,onesDr)';
       fX=Xs-Xd;
       for m=1:Np,
         fP(:,m)=-sum(Xs(:,is==m),2)+sum(Xd(:,id==m),2);
       end
-    else %elseif cosine,
+    elseif work.dtype.cosine,
       Xs=X.*sfact(:,onesDr)';
       Xd=X.*dfact(:,onesDr)';
       fX=P(:,id).*dfact(:,onesDr)'-P(:,is).*sfact(:,onesDr)';
+      for m=1:Np,
+        fP(:,m)=-sum(Xs(:,is==m),2)+sum(Xd(:,id==m),2);
+      end
+    elseif work.dtype.rtangent,
+      Xs=(X-P(:,is)).*sfact(:,onesDr)';
+      Xd=(X-P(:,id)).*dfact(:,onesDr)';
+      ml=1;
+      for m=1:Np,
+        Vp=work.Vp(:,ml:ml+work.L-1);
+        ml=ml+work.L;
+        sel=is==m;
+        Xs(:,sel)=Xs(:,sel)-Vp*(Vp'*Xs(:,sel));
+        sel=id==m;
+        Xd(:,sel)=Xd(:,sel)-Vp*(Vp'*Xd(:,sel));
+      end
+      fX=Xs-Xd;
+      for m=1:Np,
+        fP(:,m)=-sum(Xs(:,is==m),2)+sum(Xd(:,id==m),2);
+      end
+    elseif work.dtype.otangent,
+      Xs=(X-P(:,is)).*sfact(:,onesDr)';
+      Xd=(X-P(:,id)).*dfact(:,onesDr)';
+      nl=1;
+      for n=1:Nx,
+        Vx=work.Vx(:,nl:nl+work.L-1);
+        nl=nl+work.L;
+        Xs(:,n)=Xs(:,n)-Vx*(Vx'*Xs(:,n));
+        Xd(:,n)=Xd(:,n)-Vx*(Vx'*Xd(:,n));
+      end
+      fX=Xs-Xd;
+      for m=1:Np,
+        fP(:,m)=-sum(Xs(:,is==m),2)+sum(Xd(:,id==m),2);
+      end
+    elseif work.dtype.atangent,
+      Xs=(X-P(:,is)).*sfact(:,onesDr)';
+      Xd=(X-P(:,id)).*dfact(:,onesDr)';
+      oXs=Xs;
+      oXd=Xd;
+      ml=1;
+      for m=1:Np,
+        Vp=work.Vp(:,ml:ml+work.L-1);
+        ml=ml+work.L;
+        sel=is==m;
+        Xs(:,sel)=Xs(:,sel)-0.5*Vp*(Vp'*oXs(:,sel));
+        sel=id==m;
+        Xd(:,sel)=Xd(:,sel)-0.5*Vp*(Vp'*oXd(:,sel));
+      end
+      nl=1;
+      for n=1:Nx,
+        Vx=work.Vx(:,nl:nl+work.L-1);
+        nl=nl+work.L;
+        Xs(:,n)=Xs(:,n)-0.5*Vx*(Vx'*oXs(:,n));
+        Xd(:,n)=Xd(:,n)-0.5*Vx*(Vx'*oXd(:,n));
+      end
+      fX=Xs-Xd;
       for m=1:Np,
         fP(:,m)=-sum(Xs(:,is==m),2)+sum(Xd(:,id==m),2);
       end
@@ -1088,12 +1340,12 @@ function [E, J, fX, fP] = ldpp_sindex(P, Plabels, X, Xlabels, work)
   overNx=work.overNx;
 
   %%% Compute distances %%%
-  if work.euclidean,
+  if work.dtype.euclidean,
     x2=sum((X.^2),1)';
     p2=sum((P.^2),1);
     ds=X'*P;
     ds=x2(:,work.onesNp)+p2(work.onesNx,:)-ds-ds;
-  else %elseif cosine,
+  elseif work.dtype.cosine,
     psd=sqrt(sum(P.*P,1));
     P=P./psd(onesDr,:);
     xsd=sqrt(sum(X.*X,1));
@@ -1126,14 +1378,14 @@ function [E, J, fX, fP] = ldpp_sindex(P, Plabels, X, Xlabels, work)
 
   fP=zeros(Dr,Np);
 
-  if work.euclidean,
+  if work.dtype.euclidean,
     Xs=(X-P(:,is)).*sfact(:,onesDr)';
     Xd=(X-P(:,id)).*dfact(:,onesDr)';
     fX=Xs-Xd;
     for m=1:Np,
       fP(:,m)=-sum(Xs(:,is==m),2)+sum(Xd(:,id==m),2);
     end
-  else %elseif cosine,
+  elseif work.dtype.cosine,
     Xs=X.*sfact(:,onesDr)';
     Xd=X.*dfact(:,onesDr)';
     fX=P(:,id).*dfact(:,onesDr)'-P(:,is).*sfact(:,onesDr)';
@@ -1198,6 +1450,41 @@ function X = orthounit(X)
   onX=orthonorm(X);
   X=onX.*repmat(sum(onX'*X,1),size(X,1),1);
   X=sqrt(size(X,2)).*X./sqrt(sum(diag(X'*X)));
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function X = orthotangs(X,N)
+  for n=N:N:size(X,2),
+    [XX,dummy]=qr(X(:,n-N+1:n),0);
+    X(:,n-N+1:n)=XX;
+  end
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function cfg = comptangs(B,P,cfg)
+  if cfg.dtype.otangent || cfg.dtype.atangent,
+    if cfg.knntangs,
+      cfg.Vx(:,cfg.knntangsx)=tangVects(cfg.rX,cfg.knntypes,'Xlabels',cfg.Xlabels);
+      cfg.Vx(:,~cfg.knntangsx)=B'*cfg.oVx;
+    else
+      cfg.Vx=B'*cfg.oVx;
+    end
+    cfg.Vx=orthotangs(cfg.Vx,cfg.L);
+  end
+  if cfg.dtype.rtangent || cfg.dtype.atangent,
+    if cfg.normalize || cfg.linearnorm,
+      P=P.*cfg.xsd(cfg.xsd~=0,cfg.onesNp)+cfg.xmu(cfg.xsd~=0,cfg.onesNp);
+      if sum(cfg.xsd==0)>0,
+        oP=P;
+        P=zeros(cfg.D,cfg.Np);
+        P(cfg.xsd~=0,:)=oP;
+      end
+    elseif whiten,
+      P=cfg.IW'*P+cfg.xmu(:,cfg.onesNp);
+    end
+    Vp=tangVects(P,cfg.imgtypes);
+    cfg.Vp=orthotangs(B'*Vp,cfg.imgtangs);
+  end
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

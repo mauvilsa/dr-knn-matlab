@@ -281,7 +281,6 @@ elseif dtype.tangent,
       Arp=Vpx*iVxx*Vpx'-Vpp;
       Alx=(Vpx'*iVpp*Vp'-Vx')*(x-p);
       Arx=Vxx-Vpx'*iVpp*Vpx;
-      keyboard
       ap=Arp\Alp;
       ax=Arx\Alx;
       xx=x+Vx*ax;

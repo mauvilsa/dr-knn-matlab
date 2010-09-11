@@ -73,7 +73,13 @@ logfile=2;
 n=1;
 argerr=false;
 while size(varargin,2)>0,
-  if ~ischar(varargin{n}) || size(varargin,2)<n+1,
+  if isstruct(varargin{n}),
+    cfgvars=fieldnames(varargin{n});
+    for m=1:size(cfgvars,1),
+      eval([cfgvars{m} '=varargin{n}.' cfgvars{m} ';']);
+    end
+    n=n+1;
+  elseif ~ischar(varargin{n}) || size(varargin,2)<n+1,
     argerr=true;
   elseif strcmp(varargin{n},'imSize') || ...
          strcmp(varargin{n},'bw') || ...
