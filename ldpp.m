@@ -5,6 +5,9 @@ function [bestB, bestP, Plabels, info, other] = ldpp(X, Xlabels, B0, P0, Plabels
 % Usage:
 %   [B, P] = ldpp(X, Xlabels, B0, P0, Plabels, ...)
 %
+% Usage initialize prototypes:
+%   [P0, Plabels] = ldpp('initP', X, Xlabels, Npc, B)
+%
 % Usage cross-validation (PCA & kmeans initialization):
 %   [B, P, Plabels] = ldpp(X, Xlabels, maxDr, maxNpc, [], ...)
 %
@@ -119,6 +122,11 @@ if strncmp(X,'-v',2),
   return;
 end
 
+if strncmp(X,'initP',5),
+  [bestB, bestP] = ldpp_initP(Xlabels, B0, unique(B0), P0, Plabels);
+  return;
+end
+
 fn='ldpp:';
 minargs=5;
 
@@ -150,9 +158,7 @@ dtype.tangent=false;
 dtype.rtangent=false;
 dtype.otangent=false;
 dtype.atangent=false;
-%euclidean=true;
-%cosine=false;
-tangtypes='k5';
+tangtypes='k2';
 normalize=true;
 linearnorm=false;
 whiten=false;
@@ -215,8 +221,6 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'cv_save') || ...
          strcmp(varargin{n},'initP') || ...
          strcmp(varargin{n},'verbose'),
-         %strcmp(varargin{n},'euclidean') || ...
-         %strcmp(varargin{n},'cosine') || ...
     eval([varargin{n},'=varargin{n+1};']);
     if ~islogical(varargin{n+1}),
       argerr=true;
@@ -226,10 +230,6 @@ while size(varargin,2)>0,
           orthogonal=false;
         elseif strcmp(varargin{n},'orthogonal'),
           orthonormal=false;
-        %elseif strcmp(varargin{n},'euclidean'),
-        %  cosine=false;
-        %elseif strcmp(varargin{n},'cosine'),
-        %  euclidean=false;
         elseif strcmp(varargin{n},'normalize'),
           whiten=false;    linearnorm=false;
         elseif strcmp(varargin{n},'linearnorm'),
@@ -312,43 +312,9 @@ Np=size(P0,2);
 
 %%% Probe mode %%%
 if exist('probemode','var'),
-  %probevars=fieldnames(probemode);
-  %for n=1:max(size(probevars)),
-  %  eval([probevars{n} '=probemode.' probevars{n} ';']);
-  %end
-  rateB=probemode.rateB;
-  rateP=probemode.rateP;
-  minI=probemode.minI;
-  maxI=probemode.maxI;
-  epsilon=probemode.epsilon;
-  stats=probemode.stats;
-  orthoit=probemode.orthoit;
-  orthonormal=probemode.orthonormal;
-  orthogonal=probemode.orthogonal;
-  %euclidean=probemode.euclidean;
-  dtype=probemode.dtype;
-  tangcfg=probemode.tangcfg;
-  testJ=probemode.testJ;
-  stochastic=probemode.stochastic;
-  devel=probemode.devel;
-  work=probemode.work;  
-  logfile=probemode.logfile;
-  if devel,
-    dwork=probemode.dwork;
-    Y=probemode.Y;
-    Ylabels=probemode.Ylabels;
-  end
-  if stochastic,
-    swork=probemode.swork;
-    onesC=probemode.onesC;
-    onesS=probemode.onesS;
-    cumprior=probemode.cumprior;
-    nc=probemode.nc;
-    cnc=probemode.cnc;
-    stochsamples=probemode.stochsamples;
-    stocheck=probemode.stocheck;
-    stocheckfull=probemode.stocheckfull;
-    stochfinalexact=probemode.stochfinalexact;
+  probevars=fieldnames(probemode);
+  for n=1:size(probevars,1),
+    eval([probevars{n} '=probemode.' probevars{n} ';']);
   end
   normalize=false;
   verbose=true;
@@ -549,21 +515,19 @@ if ~probemode,
     tangcfg.D=D;
     tangcfg.Vx=[];
     tangcfg.Vp=[];
+    %%% k-NN tangents %%%
     if sum(tangtypes=='k')>0,
       idx=find(tangtypes=='k');
       tangcfg.knntangs=str2num(tangtypes(idx+1:end));
       tangcfg.knntypes=tangtypes(idx:end);
       tangtypes=tangtypes(1:idx-1);
-      if dtype.otangent || dtype.atangent,
-        tangcfg.Xlabels=Xlabels;
-        %if devel,
-        %  tangcfg.Ylabels=Ylabels;
-        %end
-      end
-      %if dtype.rtangent || dtype.atangent,
-      %  tangcfg.Plabels=Plabels;
+      tangcfg.Xlabels=Xlabels;
+      tangcfg.Plabels=Plabels;
+      %if devel,
+      %  tangcfg.Ylabels=Ylabels;
       %end
     end
+    %%% Image tangents %%%
     if numel(tangtypes)>0,
       tangcfg.imgtangs=numel(tangtypes);
       tangcfg.imgtypes=tangtypes;
@@ -575,12 +539,26 @@ if ~probemode,
           tangcfg.xmu=xmu;
           tangcfg.xsd=xsd;
         elseif whiten,
+          tangcfg.W=W;
           tangcfg.IW=IW;
           tangcfg.xmu=xmu;
+        end
+        if tangcfg.knntangs,
+          tangcfg.knntangsp=repmat([false(tangcfg.imgtangs,1);true(tangcfg.knntangs,1)],1,Np);
+          tangcfg.knntangsp=tangcfg.knntangsp(:);
+          tangcfg.Vp=zeros(Dr,numel(tangcfg.knntangsp));
         end
       end
       if dtype.otangent || dtype.atangent,
         tangcfg.oVx=tangVects(oX,tangcfg.imgtypes,tangcfg.imgtangcfg);
+        if normalize || linearnorm,
+          tangcfg.oVx=(tangcfg.oVx-xmu(:,ones(size(tangcfg.oVx,2),1)))./xsd(:,ones(size(tangcfg.oVx,2),1));
+          if sum(xsd==0)>0,
+            tangcfg.oVx(xsd==0,:)=[];
+          end
+        elseif whiten,
+          tangcfg.oVx=W'*(tangcfg.oVx-cfg.xmu(:,ones(size(tangcfg.oVx,2),1)));
+        end
         if tangcfg.knntangs,
           tangcfg.knntangsx=repmat([false(tangcfg.imgtangs,1);true(tangcfg.knntangs,1)],1,Nx);
           tangcfg.knntangsx=tangcfg.knntangsx(:);
@@ -588,6 +566,14 @@ if ~probemode,
         end
         %if devel,
         %  tangcfg.oVy=tangVects(oY,tangcfg.imgtypes,tangcfg.imgtangcfg);
+        %  if normalize || linearnorm,
+        %    tangcfg.oVy=(tangcfg.oVy-xmu(:,ones(size(tangcfg.oVy,2),1)))./xsd(:,ones(size(tangcfg.oVy,2),1));
+        %    if sum(xsd==0)>0,
+        %      tangcfg.oVy(xsd==0,:)=[];
+        %    end
+        %  elseif whiten,
+        %    tangcfg.oVy=W'*(tangcfg.oVy-cfg.xmu(:,ones(size(tangcfg.oVy,2),1)));
+        %  end
         %end
       end
     end
@@ -631,15 +617,18 @@ if ~probemode,
   work.Nx=Nx;
   work.C=C;
   work.Dr=Dr;
-  %work.euclidean=euclidean;
   work.dtype=dtype;
   work.cfact=cfact;
   work.jfact=jfact;
   work.prior=prior;
   if dtype.tangent,
     work.tangcfg=tangcfg;
+    work.L=tangcfg.L;
+    if dtype.otangent || dtype.atangent,
+      work.tidx=repmat([1:Nx],work.L,1);
+      work.tidx=work.tidx(:);
+    end
   end
-  work.L=tangcfg.L;
 
   if stochastic,
     swork=work;
@@ -718,9 +707,10 @@ if crossvalidate,
   cv_cfg.orthoit=orthoit;
   cv_cfg.orthonormal=orthonormal;
   cv_cfg.orthogonal=orthogonal;
-  %cv_cfg.euclidean=euclidean;
   cv_cfg.dtype=dtype;
-  cv_cfg.tangcfg=tangcfg;
+  if dtype.tangent,
+    cv_cfg.tangcfg=tangcfg;
+  end
   cv_cfg.testJ=testJ;
   cv_cfg.stochastic=stochastic;
   cv_cfg.devel=true;
@@ -796,7 +786,6 @@ if crossvalidate,
         cv_dwk.Np=Np;
 
         if stochastic,
-          %[cv_swk.ind1,cv_swk.ind2]=comp_ind(stochsamples,Np,onesS,onesNp);
           cv_swk.Np=Np;
           cv_swk.onesNp=onesNp;
         end
@@ -929,6 +918,7 @@ if ~stochastic,
     rP=Bi'*Pi;
     rX=Bi'*X;
     if dtype.tangent,
+      tangcfg.rP=rP;
       tangcfg.rX=rX;
       tangcfg=comptangs(Bi,Pi,tangcfg);
       work.Vx=tangcfg.Vx;
@@ -1291,13 +1281,17 @@ function [E, J, fX, fP] = ldpp_index(P, Plabels, X, Xlabels, work)
     elseif work.dtype.otangent,
       Xs=(X-P(:,is)).*sfact(:,onesDr)';
       Xd=(X-P(:,id)).*dfact(:,onesDr)';
-      nl=1;
-      for n=1:Nx,
-        Vx=work.Vx(:,nl:nl+work.L-1);
-        nl=nl+work.L;
-        Xs(:,n)=Xs(:,n)-Vx*(Vx'*Xs(:,n));
-        Xd(:,n)=Xd(:,n)-Vx*(Vx'*Xd(:,n));
-      end
+      %nl=1;
+      %for n=1:Nx,
+      %  Vx=work.Vx(:,nl:nl+work.L-1);
+      %  nl=nl+work.L;
+      %  Xs(:,n)=Xs(:,n)-Vx*(Vx'*Xs(:,n));
+      %  Xd(:,n)=Xd(:,n)-Vx*(Vx'*Xd(:,n));
+      %end
+      tXs=sum(work.Vx.*Xs(:,work.tidx));
+      tXd=sum(work.Vx.*Xd(:,work.tidx));
+      Xs=Xs-permute(sum(reshape(work.Vx.*tXs(onesDr,:),Dr,work.L,Nx),2),[1 3 2]);
+      Xd=Xd-permute(sum(reshape(work.Vx.*tXd(onesDr,:),Dr,work.L,Nx),2),[1 3 2]);
       fX=Xs-Xd;
       for m=1:Np,
         fP(:,m)=-sum(Xs(:,is==m),2)+sum(Xd(:,id==m),2);
@@ -1316,13 +1310,17 @@ function [E, J, fX, fP] = ldpp_index(P, Plabels, X, Xlabels, work)
         sel=id==m;
         Xd(:,sel)=Xd(:,sel)-0.5*Vp*(Vp'*oXd(:,sel));
       end
-      nl=1;
-      for n=1:Nx,
-        Vx=work.Vx(:,nl:nl+work.L-1);
-        nl=nl+work.L;
-        Xs(:,n)=Xs(:,n)-0.5*Vx*(Vx'*oXs(:,n));
-        Xd(:,n)=Xd(:,n)-0.5*Vx*(Vx'*oXd(:,n));
-      end
+      %nl=1;
+      %for n=1:Nx,
+      %  Vx=work.Vx(:,nl:nl+work.L-1);
+      %  nl=nl+work.L;
+      %  Xs(:,n)=Xs(:,n)-0.5*Vx*(Vx'*oXs(:,n));
+      %  Xd(:,n)=Xd(:,n)-0.5*Vx*(Vx'*oXd(:,n));
+      %end
+      tXs=sum(work.Vx.*oXs(:,work.tidx));
+      tXd=sum(work.Vx.*oXd(:,work.tidx));
+      Xs=Xs-0.5*permute(sum(reshape(work.Vx.*tXs(onesDr,:),Dr,work.L,Nx),2),[1 3 2]);
+      Xd=Xd-0.5*permute(sum(reshape(work.Vx.*tXd(onesDr,:),Dr,work.L,Nx),2),[1 3 2]);
       fX=Xs-Xd;
       for m=1:Np,
         fP(:,m)=-sum(Xs(:,is==m),2)+sum(Xd(:,id==m),2);
@@ -1462,28 +1460,51 @@ function X = orthotangs(X,N)
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function cfg = comptangs(B,P,cfg)
+  %%% X tangents %%%
   if cfg.dtype.otangent || cfg.dtype.atangent,
-    if cfg.knntangs,
+    if cfg.knntangs && cfg.imgtangs,
       cfg.Vx(:,cfg.knntangsx)=tangVects(cfg.rX,cfg.knntypes,'Xlabels',cfg.Xlabels);
       cfg.Vx(:,~cfg.knntangsx)=B'*cfg.oVx;
-    else
+    elseif cfg.knntangs,
+      cfg.Vx=tangVects(cfg.rX,cfg.knntypes,'Xlabels',cfg.Xlabels);
+    elseif cfg.imgtangs,
       cfg.Vx=B'*cfg.oVx;
     end
     cfg.Vx=orthotangs(cfg.Vx,cfg.L);
   end
+  %%% P tangents %%%
   if cfg.dtype.rtangent || cfg.dtype.atangent,
-    if cfg.normalize || cfg.linearnorm,
-      P=P.*cfg.xsd(cfg.xsd~=0,cfg.onesNp)+cfg.xmu(cfg.xsd~=0,cfg.onesNp);
-      if sum(cfg.xsd==0)>0,
-        oP=P;
-        P=zeros(cfg.D,cfg.Np);
-        P(cfg.xsd~=0,:)=oP;
+    if cfg.imgtangs,
+      if cfg.normalize || cfg.linearnorm,
+        P=P.*cfg.xsd(cfg.xsd~=0,cfg.onesNp)+cfg.xmu(cfg.xsd~=0,cfg.onesNp);
+        if sum(cfg.xsd==0)>0,
+          oP=P;
+          P=cfg.xmu(:,cfg.onesNp);
+          P(cfg.xsd~=0,:)=oP;
+        end
+      elseif whiten,
+        P=cfg.IW'*P+cfg.xmu(:,cfg.onesNp);
       end
-    elseif whiten,
-      P=cfg.IW'*P+cfg.xmu(:,cfg.onesNp);
+      imgVp=tangVects(P,cfg.imgtypes,cfg.imgtangcfg);
+      onesNivp=ones(size(imgVp,2),1);
+      if cfg.normalize || cfg.linearnorm,
+        imgVp=(imgVp-cfg.xmu(:,onesNivp))./cfg.xsd(:,onesNivp);
+        if sum(cfg.xsd==0)>0,
+          imgVp(cfg.xsd==0,:)=[];
+        end
+      elseif whiten,
+        imgVp=cfg.W'*(imgVp-cfg.xmu(:,onesNivp));
+      end
     end
-    Vp=tangVects(P,cfg.imgtypes);
-    cfg.Vp=orthotangs(B'*Vp,cfg.imgtangs);
+    if cfg.knntangs && cfg.imgtangs,
+      cfg.Vp(:,cfg.knntangsp)=tangVects(cfg.rP,cfg.knntypes,'Xlabels',cfg.Plabels,'knnprotos',cfg.rX,cfg.Xlabels);
+      cfg.Vp(:,~cfg.knntangsp)=B'*imgVp;
+    elseif cfg.knntangs,
+      cfg.Vp=tangVects(cfg.rP,cfg.knntypes,'Xlabels',cfg.Plabels,'knnprotos',cfg.rX,cfg.Xlabels);
+    elseif cfg.imgtangs,
+      cfg.Vp=B'*imgVp;
+    end
+    cfg.Vp=orthotangs(cfg.Vp,cfg.L);
   end
 
 

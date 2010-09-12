@@ -97,7 +97,7 @@ if strncmp(X,'-v',2),
   return;
 end
 
-if strncmp(X,'initP',4),
+if strncmp(X,'initP',5),
   if ~exist('PP0','var'),
     [bestB, bestP] = ldppr_initP(XX, B0, P0);
   else

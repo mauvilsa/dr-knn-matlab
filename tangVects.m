@@ -26,6 +26,7 @@ function [V, Vidx] = tangVects(X, types, varargin)
 %   'krv',KRV             - Supply tangent derivative kernel, vertical
 %   'basis',(true|false)  - Compute tangent basis (default=false)
 %   'Xlabels',XLABELS     - Data class labels for kNN tangents
+%   'knnprotos',P,PLABELS - Prototypes for kNN tangents
 %
 % Output:
 %   V         - Tangent Vectors.
@@ -66,6 +67,7 @@ Vidx=[];
 
 bw=0.5;
 basis=false;
+knnprotos=false;
 
 logfile=2;
 
@@ -99,6 +101,11 @@ while size(varargin,2)>0,
     else
       n=n+2;
     end
+  elseif strcmp(varargin{n},'knnprotos'),
+    knnprotos=true;
+    P=varargin{n+1};
+    Plabels=varargin{n+2};
+    n=n+3;
   else
     argerr=true;
   end
@@ -107,7 +114,7 @@ while size(varargin,2)>0,
   end
 end
 
-[D,N]=size(X);
+[D,Nx]=size(X);
 
 %%% Error detection %%%
 if argerr,
@@ -119,7 +126,8 @@ elseif nargin-size(varargin,2)~=minargs,
 elseif ~ischar(types),
   fprintf(logfile,'%s error: types should be a string\n',fn);
   return;
-elseif exist('Xlabels','var') && (max(size(Xlabels))~=N || min(size(Xlabels))~=1),
+elseif (exist('Xlabels','var') && (max(size(Xlabels))~=Nx || min(size(Xlabels))~=1)) || ...
+       (exist('Plabels','var') && (max(size(Plabels))~=size(P,2) || min(size(Plabels))~=1)),
   fprintf(logfile,'%s error: labels must have the same size as the number of data points\n',fn);
   return;
 end
@@ -147,7 +155,9 @@ while n<=numel(types),
       fprintf(logfile,'%s error: type k should be the last one and be followed by the number of neighbors\n',fn);
       return;
     end
-    if knntangs>=N || (exist('Xlabels','var') && knntangs>=min(hist(Xlabels,unique(Xlabels)))),
+    if (~exist('Plabels','var') && ...
+         exist('Xlabels','var') && knntangs>=min(hist(Xlabels,unique(Xlabels)))) || ...
+       (exist('Plabels','var') && knntangs>=min(hist(Plabels,unique(Plabels)))),
       fprintf(logfile,'%s error: not enough samples for %d nearest neighbors\n',fn,knntangs);
       return;
     end
@@ -191,22 +201,34 @@ if imgtangs,
 end
 
 if knntangs,
-  x2=sum((X.^2),1);
-  d=X'*X;
-  d=x2(ones(N,1),:)'+x2(ones(N,1),:)-d-d;
-  d([0:N-1]*N+[1:N])=inf;
+  if ~knnprotos,
+    x2=sum((X.^2),1);
+    d=X'*X;
+    d=x2(ones(Nx,1),:)'+x2(ones(Nx,1),:)-d-d;
+    d([0:Nx-1]*Nx+[1:Nx])=inf;
+    P=X;
+    Plabels=Xlabels;
+    Np=Nx;
+  else
+    Np=size(P,2);
+    x2=sum((X.^2),1)';
+    p2=sum((P.^2),1);
+    d=X'*P;
+    d=x2(:,ones(Np,1))+p2(ones(Nx,1),:)-d-d;
+    d(d==0)=inf;
+  end
   onesK=ones(knntangs,1);
 end
 
 if exist('rmtangs','var'),
-  rmtangs=false(N*L,1);
+  rmtangs=false(Nx*L,1);
 end
 
-V=zeros(D,N*L);
-Vidx=repmat([1:N],L,1);
+V=zeros(D,Nx*L);
+Vidx=repmat([1:Nx],L,1);
 Vidx=Vidx(:);
 
-for n=1:N,
+for n=1:Nx,
   if imgtangs,
     im=reshape(X(:,n),imSize(1),imSize(2));
     derh=conv2(im,krh,'same');
@@ -244,18 +266,18 @@ for n=1:N,
     if types(l)=='k',
       if exist('Xlabels','var'),
         sd=d(n,:);
-        sd(Xlabels~=Xlabels(n))=inf;
+        sd(Plabels~=Xlabels(n))=inf;
         [sd,idx]=sort(sd);
       else
         [sd,idx]=sort(d(n,:));
       end
-      v(:,nl:nl+knntangs-1)=X(:,idx(1:knntangs))-X(:,n(onesK));
+      v(:,nl:nl+knntangs-1)=P(:,idx(1:knntangs))-X(:,n(onesK));
       nl=nl+knntangs;
     elseif types(l)=='K',
       [sd,idx]=sort(d(n,:));
-      sf=find(Xlabels(idx)~=Xlabels(n));
+      sf=find(Plabels(idx)~=Xlabels(n));
       kn=min(knntangs,sf(1)-1);
-      v(:,nl:nl+kn-1)=X(:,idx(1:kn))-X(:,n(ones(kn,1)));
+      v(:,nl:nl+kn-1)=P(:,idx(1:kn))-X(:,n(ones(kn,1)));
       v(:,nl+kn:nl+knntangs-1)=[];
       rmtangs((n-1)*L+nl+kn:n*L)=true;
       nl=nl+kn;
