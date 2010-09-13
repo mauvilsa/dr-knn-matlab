@@ -59,7 +59,7 @@ function [bestB, bestP, Plabels, info, other] = ldpp(X, Xlabels, B0, P0, Plabels
 %   'logfile',FID              - Output log file (default=stderr)
 %
 % Tangent distances options:
-%   tangtypes                  - Tangent types [hvrspdtHV]+[k]K (default='k5')
+%   'tangtypes'                - Tangent types [hvrspdtHV]+[k]K (default='k2')
 %                                h: image horizontal translation
 %                                v: image vertical translation
 %                                r: image rotation
@@ -508,13 +508,14 @@ if ~probemode,
     end
     tangcfg.imgtangs=false;
     tangcfg.knntangs=false;
-    %tangcfg.devel=devel;
+    tangcfg.devel=devel;
     tangcfg.dtype=dtype;
     tangcfg.onesNp=onesNp;
     tangcfg.Np=Np;
     tangcfg.D=D;
     tangcfg.Vx=[];
     tangcfg.Vp=[];
+    tangcfg.Vy=[];
     %%% k-NN tangents %%%
     if sum(tangtypes=='k')>0,
       idx=find(tangtypes=='k');
@@ -523,9 +524,9 @@ if ~probemode,
       tangtypes=tangtypes(1:idx-1);
       tangcfg.Xlabels=Xlabels;
       tangcfg.Plabels=Plabels;
-      %if devel,
-      %  tangcfg.Ylabels=Ylabels;
-      %end
+      if devel,
+        tangcfg.Ylabels=Ylabels;
+      end
     end
     %%% Image tangents %%%
     if numel(tangtypes)>0,
@@ -564,17 +565,22 @@ if ~probemode,
           tangcfg.knntangsx=tangcfg.knntangsx(:);
           tangcfg.Vx=zeros(Dr,numel(tangcfg.knntangsx));
         end
-        %if devel,
-        %  tangcfg.oVy=tangVects(oY,tangcfg.imgtypes,tangcfg.imgtangcfg);
-        %  if normalize || linearnorm,
-        %    tangcfg.oVy=(tangcfg.oVy-xmu(:,ones(size(tangcfg.oVy,2),1)))./xsd(:,ones(size(tangcfg.oVy,2),1));
-        %    if sum(xsd==0)>0,
-        %      tangcfg.oVy(xsd==0,:)=[];
-        %    end
-        %  elseif whiten,
-        %    tangcfg.oVy=W'*(tangcfg.oVy-cfg.xmu(:,ones(size(tangcfg.oVy,2),1)));
-        %  end
-        %end
+        if devel,
+          tangcfg.oVy=tangVects(oY,tangcfg.imgtypes,tangcfg.imgtangcfg);
+          if normalize || linearnorm,
+            tangcfg.oVy=(tangcfg.oVy-xmu(:,ones(size(tangcfg.oVy,2),1)))./xsd(:,ones(size(tangcfg.oVy,2),1));
+            if sum(xsd==0)>0,
+              tangcfg.oVy(xsd==0,:)=[];
+            end
+          elseif whiten,
+            tangcfg.oVy=W'*(tangcfg.oVy-cfg.xmu(:,ones(size(tangcfg.oVy,2),1)));
+          end
+          if tangcfg.knntangs,
+            tangcfg.knntangsy=repmat([false(tangcfg.imgtangs,1);true(tangcfg.knntangs,1)],1,Ny);
+            tangcfg.knntangsy=tangcfg.knntangsy(:);
+            tangcfg.Vy=zeros(Dr,numel(tangcfg.knntangsy));
+          end
+        end
       end
     end
     tangcfg.L=tangcfg.knntangs+tangcfg.imgtangs;
@@ -622,7 +628,6 @@ if ~probemode,
   work.jfact=jfact;
   work.prior=prior;
   if dtype.tangent,
-    work.tangcfg=tangcfg;
     work.L=tangcfg.L;
     if dtype.otangent || dtype.atangent,
       work.tidx=repmat([1:Nx],work.L,1);
@@ -644,7 +649,13 @@ if ~probemode,
     dwork.sel=Plabels(:,onesNy)'==Ylabels(:,onesNp);
     dwork.Nx=Ny;
     dwork.onesNx=onesNy;
-    %dwork.L=tangcfg.L;
+    if dtype.tangent,
+      dwork.L=tangcfg.L;
+      if dtype.otangent || dtype.atangent,
+        dwork.tidx=repmat([1:Ny],work.L,1);
+        dwork.tidx=dwork.tidx(:);
+      end
+    end
   end
 
   tm=toc;
@@ -700,6 +711,15 @@ if crossvalidate,
     cv_swk=swork;
   end
 
+  if dtype.tangent,
+    if dtype.otangent || dtype.atangent,
+      cv_wk.tidx=repmat([1:cv_Nx],work.L,1);
+      cv_wk.tidx=cv_wk.tidx(:);
+      cv_dwk.tidx=repmat([1:cv_Ny],work.L,1);
+      cv_dwk.tidx=cv_dwk.tidx(:);
+    end
+  end
+
   cv_cfg.minI=minI;
   cv_cfg.maxI=maxI;
   cv_cfg.epsilon=epsilon;
@@ -710,6 +730,7 @@ if crossvalidate,
   cv_cfg.dtype=dtype;
   if dtype.tangent,
     cv_cfg.tangcfg=tangcfg;
+    cv_cfg.tangcfg.devel=true;
   end
   cv_cfg.testJ=testJ;
   cv_cfg.stochastic=stochastic;
@@ -741,6 +762,15 @@ if crossvalidate,
 
     cv_cfg.Y=X(:,cv_Yrnd);
     cv_cfg.Ylabels=Xlabels(cv_Yrnd);
+
+    if dtype.tangent,
+      if dtype.otangent || dtype.atangent,
+        sel=(repmat((cv_Xrnd-1)*work.L+1,1,work.L)+repmat([0:work.L-1],cv_Nx,1))';
+        cv_cfg.tangcfg.oVx=tangcfg.oVx(:,sel(:));
+        sel=(repmat((cv_Yrnd-1)*work.L+1,1,work.L)+repmat([0:work.L-1],cv_Ny,1))';
+        cv_cfg.tangcfg.oVy=tangcfg.oVx(:,sel(:));
+      end
+    end
 
     cv_cfact=zeros(C,1);
     for c=1:C,
@@ -917,16 +947,26 @@ if ~stochastic,
     %%% Compute statistics %%%
     rP=Bi'*Pi;
     rX=Bi'*X;
+    if devel,
+      rY=Bi'*Y;
+    end
     if dtype.tangent,
       tangcfg.rP=rP;
       tangcfg.rX=rX;
+      if devel,
+        tangcfg.rY=rY;
+      end
       tangcfg=comptangs(Bi,Pi,tangcfg);
       work.Vx=tangcfg.Vx;
       work.Vp=tangcfg.Vp;
+      if devel,
+        dwork.Vx=tangcfg.Vy;
+        dwork.Vp=tangcfg.Vp;
+      end
     end
     [E,J,fX,fP]=ldpp_index(rP,Plabels,rX,Xlabels,work);
     if devel,
-      E=ldpp_index(rP,Plabels,Bi'*Y,Ylabels,dwork);
+      E=ldpp_index(rP,Plabels,rY,Ylabels,dwork);
     end
 
     %%% Determine if there was improvement %%%
@@ -1127,6 +1167,9 @@ if nargout>4,
     tangcfg=comptangs(bestB,bestP,tangcfg);
     if dtype.otangent || dtype.atangent,
       other.Vx=tangcfg.Vx;
+      if devel,
+        other.Vy=tangcfg.Vy;
+      end
     end
     if dtype.rtangent || dtype.atangent,
       other.Vp=tangcfg.Vp;
@@ -1434,18 +1477,12 @@ function [mu, ind] = kmeans(X, K)
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function X = orthonorm(X)
-  %for n=1:size(X,2),
-  %  for m=1:n-1,
-  %    X(:,n)=X(:,n)-(X(:,n)'*X(:,m))*X(:,m);
-  %  end
-  %  X(:,n)=(1/sqrt(X(:,n)'*X(:,n)))*X(:,n);
-  %end
   [X,dummy]=qr(X,0);
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function X = orthounit(X)
-  onX=orthonorm(X);
+  [onX,dummy]=qr(X,0);
   X=onX.*repmat(sum(onX'*X,1),size(X,1),1);
   X=sqrt(size(X,2)).*X./sqrt(sum(diag(X'*X)));
 
@@ -1465,12 +1502,25 @@ function cfg = comptangs(B,P,cfg)
     if cfg.knntangs && cfg.imgtangs,
       cfg.Vx(:,cfg.knntangsx)=tangVects(cfg.rX,cfg.knntypes,'Xlabels',cfg.Xlabels);
       cfg.Vx(:,~cfg.knntangsx)=B'*cfg.oVx;
+      if cfg.devel,
+        cfg.Vy(:,cfg.knntangsy)=tangVects(cfg.rY,cfg.knntypes,'Xlabels',cfg.Ylabels);
+        cfg.Vy(:,~cfg.knntangsy)=B'*cfg.oVy;
+      end
     elseif cfg.knntangs,
       cfg.Vx=tangVects(cfg.rX,cfg.knntypes,'Xlabels',cfg.Xlabels);
+      if cfg.devel,
+        cfg.Vy=tangVects(cfg.rY,cfg.knntypes,'Xlabels',cfg.Ylabels);
+      end
     elseif cfg.imgtangs,
       cfg.Vx=B'*cfg.oVx;
+      if cfg.devel,
+        cfg.Vy=B'*cfg.oVy;
+      end
     end
     cfg.Vx=orthotangs(cfg.Vx,cfg.L);
+    if cfg.devel,
+      cfg.Vy=orthotangs(cfg.Vy,cfg.L);
+    end
   end
   %%% P tangents %%%
   if cfg.dtype.rtangent || cfg.dtype.atangent,

@@ -27,6 +27,7 @@ function [V, Vidx] = tangVects(X, types, varargin)
 %   'basis',(true|false)  - Compute tangent basis (default=false)
 %   'Xlabels',XLABELS     - Data class labels for kNN tangents
 %   'knnprotos',P,PLABELS - Prototypes for kNN tangents
+%   'projb',PROJB         - Project tangents using PROJB (default=false)
 %
 % Output:
 %   V         - Tangent Vectors.
@@ -86,6 +87,7 @@ while size(varargin,2)>0,
   elseif strcmp(varargin{n},'imSize') || ...
          strcmp(varargin{n},'bw') || ...
          strcmp(varargin{n},'Xlabels') || ...
+         strcmp(varargin{n},'projb') || ...
          strcmp(varargin{n},'krh') || ...
          strcmp(varargin{n},'krv'),
     eval([varargin{n},'=varargin{n+1};']);
@@ -172,6 +174,27 @@ if numel(types)~=numel(unique(types)),
   return;
 end
 
+uselabels=false;
+if exist('Xlabels','var'),
+  uselabels=true;
+end
+
+if ~knnprotos,
+  P=X;
+  Np=Nx;
+  if uselabels,
+    Plabels=Xlabels;
+  end
+end
+
+Dr=D;
+project=false;
+if exist('projb','var'),
+  project=true;
+  Dr=size(projb,2);
+  pmu=mean(P,2);
+end
+
 if imgtangs,
   if ~exist('imSize','var'),
     imW=round(sqrt(D));
@@ -202,18 +225,29 @@ end
 
 if knntangs,
   if ~knnprotos,
-    x2=sum((X.^2),1);
-    d=X'*X;
+    if project,
+      rX=projb'*X;
+      x2=sum((rX.^2),1);
+      d=rX'*rX;
+    else
+      x2=sum((X.^2),1);
+      d=X'*X;
+    end
     d=x2(ones(Nx,1),:)'+x2(ones(Nx,1),:)-d-d;
     d([0:Nx-1]*Nx+[1:Nx])=inf;
-    P=X;
-    Plabels=Xlabels;
-    Np=Nx;
   else
     Np=size(P,2);
-    x2=sum((X.^2),1)';
-    p2=sum((P.^2),1);
-    d=X'*P;
+    if project,
+      rX=projb'*X;
+      rP=projb'*P;
+      x2=sum((rX.^2),1)';
+      p2=sum((rP.^2),1);
+      d=rX'*rP;
+    else
+      x2=sum((X.^2),1)';
+      p2=sum((P.^2),1);
+      d=X'*P;
+    end
     d=x2(:,ones(Np,1))+p2(ones(Nx,1),:)-d-d;
     d(d==0)=inf;
   end
@@ -224,7 +258,7 @@ if exist('rmtangs','var'),
   rmtangs=false(Nx*L,1);
 end
 
-V=zeros(D,Nx*L);
+V=zeros(Dr,Nx*L);
 Vidx=repmat([1:Nx],L,1);
 Vidx=Vidx(:);
 
@@ -264,7 +298,7 @@ for n=1:Nx,
     end
 
     if types(l)=='k',
-      if exist('Xlabels','var'),
+      if uselabels,
         sd=d(n,:);
         sd(Plabels~=Xlabels(n))=inf;
         [sd,idx]=sort(sd);
@@ -286,8 +320,15 @@ for n=1:Nx,
       if types(l)>='A' && types(l)<='Z',
         v(:,l)=10*v(:,l);
       end
+      if project,
+        v(:,l)=v(:,l)-pmu;
+      end
       nl=nl+1;
     end
+  end
+
+  if project,
+    v=projb'*v;
   end
 
   if basis,
