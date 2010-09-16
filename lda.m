@@ -13,7 +13,8 @@ function [B, V] = lda(X, Xlabels, varargin)
 %   'dopca',DIM         - Perform PCA before LDA (default=false)
 %   'pcab',PCAB         - Supply the PCA basis
 %   'tang',XTANGS       - Do tangent vector LDA (default=false)
-%   'tfact',TFACT       - Importance of tangents (default=0.01)
+%   'tfact',TFACT       - Importance of tangents (default=0.1)
+%   'ptfact',PTFACT     - Importance of each tangent type (default=1)
 %   'nda',(true|alpha)  - Use nonparametric between scatter (default=false)
 %
 % Output:
@@ -54,7 +55,7 @@ B=[];
 V=[];
 
 dopca=false;
-tfact=0.01;
+tfact=0.1;
 nda=false;
 
 logfile=2;
@@ -66,6 +67,7 @@ while size(varargin,2)>0,
   if ~ischar(varargin{n}),
     argerr=true;
   elseif strcmp(varargin{n},'tfact') || ...
+         strcmp(varargin{n},'ptfact') || ...
          strcmp(varargin{n},'dopca') || ...
          strcmp(varargin{n},'pcab') || ...
          strcmp(varargin{n},'nda') || ...
@@ -99,6 +101,14 @@ elseif max(size(Xlabels))~=N || min(size(Xlabels))~=1,
 elseif exist('tang','var') && mod(size(tang,2),N)~=0,
   fprintf(logfile,'%s error: number of tangents should be a multiple of the number of samples\n',fn);
   return;
+elseif exist('tang','var') && exist('ptfact','var') && ...
+       (numel(ptfact)~=size(tang,2)/N || size(ptfact,1)~=1),
+  fprintf(logfile,'%s error: ptfact should be a row vector with the same number of elements as tangent types\n',fn);
+  return;
+end
+
+if exist('tang','var') && exist('ptfact','var'),
+  tang=tang.*repmat(ptfact,D,N);
 end
 
 if exist('pcab','var') && ~dopca,
@@ -173,17 +183,11 @@ for c=Clabels,
     muc=muc-mu;
     SB=SB+Nc.*muc*muc';
   end
-  if exist('tang','var');
-    sel=sel(:,ones(L,1))';
-    sel=sel(:);
-    tangc=tang(:,sel);
-    tSW=tSW+(1/L).*(tangc*tangc');
-  end
 end
-if exist('tang','var');
+if exist('tang','var'),
+  tSW=(1/L).*(tang*tang');
   tfact=tfact*trace(SW)/trace(tSW);
   SW=(1/N).*(SW+tfact.*tSW);
-  %SW=(1/N).*(SW+2*tfact*tfact*tSW);
 else
   SW=(1/N).*SW;
 end

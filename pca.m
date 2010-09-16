@@ -6,19 +6,20 @@ function [B, V] = pca(X, varargin)
 %   [B, V] = pca(X, ...)
 %
 % Input:
-%   X              - Data matrix. Each column vector is a data point.
+%   X                - Data matrix. Each column vector is a data point.
 %
 % Input (optional):
-%   'auto'         - Choose algorithm automatically (default=true)
-%   'cova'         - Use covariance matrix algorithm (default=false)
-%   'grma'         - Use gram matrix algorithm (default=false)
-%   'svda'         - Use SVD algorithm (default=false)
-%   'tang',XTANGS  - Do tangent vector PCA (default=false)
-%   'tfact',TFACT  - Importance of tangents (default=0.01)
+%   'auto'           - Choose algorithm automatically (default=true)
+%   'cova'           - Use covariance matrix algorithm (default=false)
+%   'grma'           - Use gram matrix algorithm (default=false)
+%   'svda'           - Use SVD algorithm (default=false)
+%   'tang',XTANGS    - Do tangent vector PCA (default=false)
+%   'tfact',TFACT    - Importance of tangents (default=0.1)
+%   'ptfact',PTFACT  - Importance of each tangent type (default=1)
 %
 % Output:
-%   B              - Computed PCA basis
-%   V              - Computed PCA eigenvalues
+%   B                - Computed PCA basis
+%   V                - Computed PCA eigenvalues
 %
 % $Revision$
 % $Date$
@@ -57,7 +58,7 @@ auto=true;
 cova=false;
 grma=false;
 svda=false;
-tfact=0.01;
+tfact=0.1;
 
 logfile=2;
 
@@ -68,6 +69,7 @@ while size(varargin,2)>0,
   if ~ischar(varargin{n}),
     argerr=true;
   elseif strcmp(varargin{n},'tfact') || ...
+         strcmp(varargin{n},'ptfact') || ...
          strcmp(varargin{n},'tang'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~isnumeric(varargin{n+1}),
@@ -113,6 +115,10 @@ elseif nargin-size(varargin,2)~=minargs,
 elseif exist('tang','var') && mod(size(tang,2),N)~=0,
   fprintf(logfile,'%s error: number of tangents should be a multiple of the number of samples\n',fn);
   return;
+elseif exist('tang','var') && exist('ptfact','var') && ...
+       (numel(ptfact)~=size(tang,2)/N || size(ptfact,1)~=1),
+  fprintf(logfile,'%s error: ptfact should be a row vector with the same number of elements as tangent types\n',fn);
+  return;
 end
 
 if exist('tang','var') && ~cova,
@@ -127,10 +133,12 @@ if cova,
   cov=(1/N)*(X*X');
   if exist('tang','var'),
     L=size(tang,2)/N;
+    if exist('ptfact','var'),
+      tang=tang.*repmat(ptfact,D,N);
+    end
     tcov=(1/(L*N))*(tang*tang');
     tfact=tfact*trace(cov)/trace(tcov);
     cov=cov+tfact.*tcov;
-    %cov=cov+(2*tfact*tfact).*tcov;
   end
   [B,V]=eig(cov);
   V=real(diag(V));
