@@ -27,6 +27,7 @@ function [V, Vidx] = tangVects(X, types, varargin)
 %   'basis',(true|false)  - Compute tangent basis (default=false)
 %   'Xlabels',XLABELS     - Data class labels for kNN tangents
 %   'knnprotos',P,PLABELS - Prototypes for kNN tangents
+%   'pmu',PMU             - Mean value to substract (default=mean(P))
 %   'projb',PROJB         - Project tangents using PROJB (default=false)
 %
 % Output:
@@ -88,6 +89,7 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'bw') || ...
          strcmp(varargin{n},'Xlabels') || ...
          strcmp(varargin{n},'projb') || ...
+         strcmp(varargin{n},'pmu') || ...
          strcmp(varargin{n},'krh') || ...
          strcmp(varargin{n},'krv'),
     eval([varargin{n},'=varargin{n+1};']);
@@ -192,7 +194,9 @@ project=false;
 if exist('projb','var'),
   project=true;
   Dr=size(projb,2);
-  pmu=mean(P,2);
+  if ~exist('pmu','var'),
+    pmu=mean(P,2);
+  end
 end
 
 if imgtangs,
