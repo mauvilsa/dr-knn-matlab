@@ -209,5 +209,5 @@ if dopca,
 end
 
 if sum(isinf(V))>0,
-  fprintf(logfile,'%s error: infinite generalized eigenvalues\n',fn);
+  fprintf(logfile,'%s warning: infinite generalized eigenvalues\n',fn);
 end
