@@ -1279,6 +1279,9 @@ function [E, J, fX, fP] = ldpp_index(P, Plabels, X, Xlabels, work)
     expon=exp(work.slope*(1-ratio));
     sigm=1./(1+expon);
     J=work.jfact*sum(work.cfact.*sigm);
+    if ~isfinite(J),
+      E=1;
+    end
   end
 
   %%% Compute gradient %%%
