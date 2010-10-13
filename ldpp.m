@@ -280,6 +280,8 @@ C=max(size(unique(Plabels)));
 if devel,
   Ny=size(Y,2);
 end
+B0=double(B0);
+P0=double(P0);
 
 %%% Automatic initial parameters %%%
 if ~crossvalidate && max(size(B0))==1 && max(size(P0))==1,
@@ -946,9 +948,9 @@ if ~stochastic,
 
     %%% Compute statistics %%%
     rP=Bi'*Pi;
-    rX=Bi'*X;
+    rX=double(Bi'*X);
     if devel,
-      rY=Bi'*Y;
+      rY=double(Bi'*Y);
     end
     if dtype.tangent,
       tangcfg.rP=rP;
