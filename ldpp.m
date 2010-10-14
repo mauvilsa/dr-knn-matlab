@@ -280,8 +280,6 @@ C=max(size(unique(Plabels)));
 if devel,
   Ny=size(Y,2);
 end
-B0=double(B0);
-P0=double(P0);
 
 %%% Automatic initial parameters %%%
 if ~crossvalidate && max(size(B0))==1 && max(size(P0))==1,
@@ -378,6 +376,9 @@ end
 %%% Preprocessing %%%
 if ~probemode,
   tic;
+
+  B0=double(B0);
+  P0=double(P0);
 
   if exist('seed','var'),
     rand('state',seed);
@@ -1268,8 +1269,8 @@ function [E, J, fX, fP] = ldpp_index(P, Plabels, X, Xlabels, work)
   dd(sel)=inf;
   [ds,is]=min(ds,[],2);
   [dd,id]=min(dd,[],2);
-  ds(ds==0)=realmin;
-  dd(dd==0)=realmin;
+  ds(ds<eps)=eps;
+  dd(dd<eps)=eps;
 
   %%% Compute statistics %%%
   E=0;
@@ -1405,8 +1406,8 @@ function [E, J, fX, fP] = ldpp_sindex(P, Plabels, X, Xlabels, work)
   dd(ssel)=inf;
   [ds,is]=min(ds,[],2);
   [dd,id]=min(dd,[],2);
-  ds(ds==0)=realmin;
-  dd(dd==0)=realmin;
+  ds(ds<eps)=eps;
+  dd(dd<eps)=eps;
   ratio=ds./dd;
   expon=exp(work.slope*(1-ratio));
   sigm=1./(1+expon);
