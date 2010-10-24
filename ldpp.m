@@ -44,7 +44,6 @@ function [bestB, bestP, Plabels, info, other] = ldpp(X, Xlabels, B0, P0, Plabels
 % Data normalization options:
 %   'normalize',(true|false)   - Normalize training data (default=true)
 %   'linearnorm',(true|false)  - Linear normalize training data (default=false)
-%   'whiten',(true|false)      - Whiten training data (default=false)
 %
 % Stochastic options:
 %   'stochastic',(true|false)  - Stochastic gradient descend (default=true)
@@ -161,7 +160,6 @@ dtype.atangent=false;
 tangtypes='k2';
 normalize=true;
 linearnorm=false;
-whiten=false;
 testJ=false;
 crossvalidate=false;
 cv_save=false;
@@ -213,7 +211,6 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'orthogonal') || ...
          strcmp(varargin{n},'normalize') || ...
          strcmp(varargin{n},'linearnorm') || ...
-         strcmp(varargin{n},'whiten') || ...
          strcmp(varargin{n},'stochastic') || ...
          strcmp(varargin{n},'stocheckfull') || ...
          strcmp(varargin{n},'stochfinalexact') || ...
@@ -231,11 +228,9 @@ while size(varargin,2)>0,
         elseif strcmp(varargin{n},'orthogonal'),
           orthonormal=false;
         elseif strcmp(varargin{n},'normalize'),
-          whiten=false;    linearnorm=false;
+          linearnorm=false;
         elseif strcmp(varargin{n},'linearnorm'),
-          normalize=false; whiten=false;
-        elseif strcmp(varargin{n},'whiten'),
-          normalize=false; linearnorm=false;
+          normalize=false;
         end
       end
       n=n+2;
@@ -389,6 +384,14 @@ if ~probemode,
     rateP=rates;
   end
 
+  if Dr>1,
+    rates=log(exp(slope)+1)/slope;
+  else
+    rates=0.1;
+  end
+  rateB=rateB*rates;
+  rateP=rateP*rates;
+
   onesNx=ones(Nx,1);
   onesNp=ones(Np,1);
   onesDr=ones(Dr,1);
@@ -404,9 +407,7 @@ if ~probemode,
   if normalize || linearnorm,
     xmu=mean(X,2);
     xsd=std(X,1,2);
-    if dtype.euclidean || dtype.rtangent || dtype.otangent || dtype.atangent,
-      xsd=Dr*xsd;
-    end
+    xsd=sqrt(D*Dr)*xsd/10;
     if linearnorm,
       xsd=max(xsd)*ones(size(xsd));
     end
@@ -435,22 +436,6 @@ if ~probemode,
       P0(xsd==0,:)=[];
       fprintf(logfile,'%s warning: some dimensions have a standard deviation of zero\n',fn);
     end
-  elseif whiten,
-    [W,V]=pca(X);
-    W=W(:,V>eps);
-    V=V(V>eps);
-    W=W.*repmat((1./sqrt(V))',D,1);
-    if dtype.euclidean || dtype.rtangent || dtype.otangent || dtype.atangent,
-      W=(1/Dr).*W;
-    end
-    xmu=mean(X,2);
-    X=W'*(X-xmu(:,onesNx));
-    if devel,
-      Y=W'*(Y-xmu(:,onesNy));
-    end
-    P0=W'*(P0-xmu(:,onesNp));
-    IW=pinv(W);
-    B0=IW*B0;
   end
 
   %%% Adjusting the labels to be between 1 and C %%%
@@ -537,15 +522,10 @@ if ~probemode,
       tangcfg.imgtypes=tangtypes;
       tangcfg.normalize=normalize;
       tangcfg.linearnorm=linearnorm;
-      tangcfg.whiten=whiten;
       if dtype.rtangent || dtype.atangent,
         if normalize || linearnorm,
           tangcfg.xmu=xmu;
           tangcfg.xsd=xsd;
-        elseif whiten,
-          tangcfg.W=W;
-          tangcfg.IW=IW;
-          tangcfg.xmu=xmu;
         end
         if tangcfg.knntangs,
           tangcfg.knntangsp=repmat([false(tangcfg.imgtangs,1);true(tangcfg.knntangs,1)],1,Np);
@@ -560,8 +540,6 @@ if ~probemode,
           if sum(xsd==0)>0,
             tangcfg.oVx(xsd==0,:)=[];
           end
-        elseif whiten,
-          tangcfg.oVx=W'*(tangcfg.oVx-cfg.xmu(:,ones(size(tangcfg.oVx,2),1)));
         end
         if tangcfg.knntangs,
           tangcfg.knntangsx=repmat([false(tangcfg.imgtangs,1);true(tangcfg.knntangs,1)],1,Nx);
@@ -575,8 +553,6 @@ if ~probemode,
             if sum(xsd==0)>0,
               tangcfg.oVy(xsd==0,:)=[];
             end
-          elseif whiten,
-            tangcfg.oVy=W'*(tangcfg.oVy-cfg.xmu(:,ones(size(tangcfg.oVy,2),1)));
           end
           if tangcfg.knntangs,
             tangcfg.knntangsy=repmat([false(tangcfg.imgtangs,1);true(tangcfg.knntangs,1)],1,Ny);
@@ -1196,9 +1172,6 @@ if normalize || linearnorm,
     bestB=zeros(D,Dr);
     bestB(xsd~=0,:)=B;
   end
-elseif whiten,
-  bestP=IW'*bestP+xmu(:,onesNp);
-  bestB=W*bestB;
 end
 
 
@@ -1538,8 +1511,6 @@ function cfg = comptangs(B,P,cfg)
           P=cfg.xmu(:,cfg.onesNp);
           P(cfg.xsd~=0,:)=oP;
         end
-      elseif whiten,
-        P=cfg.IW'*P+cfg.xmu(:,cfg.onesNp);
       end
       imgVp=tangVects(P,cfg.imgtypes,cfg.imgtangcfg);
       onesNivp=ones(size(imgVp,2),1);
@@ -1548,8 +1519,6 @@ function cfg = comptangs(B,P,cfg)
         if sum(cfg.xsd==0)>0,
           imgVp(cfg.xsd==0,:)=[];
         end
-      elseif whiten,
-        imgVp=cfg.W'*(imgVp-cfg.xmu(:,onesNivp));
       end
     end
     if cfg.knntangs && cfg.imgtangs,
