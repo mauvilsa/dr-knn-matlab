@@ -35,11 +35,11 @@ function [bestB, bestP, Plabels, info, other] = ldpp(X, Xlabels, B0, P0, Plabels
 %   'orthoit',OIT              - Orthogonalize every OIT (default=1)
 %   'orthonormal',(true|false) - Orthonormal projection base (default=true)
 %   'orthogonal',(true|false)  - Orthogonal projection base (default=false)
-%   'euclidean'                - Euclidean distance (default=true)
-%   'cosine'                   - Cosine distance (default=false)
-%   'rtangent'                 - Ref. tangent distance (default=false)
-%   'otangent'                 - Obs. tangent distance (default=false)
-%   'atangent'                 - Avg. tangent distance (default=false)
+%   'dist',('euclidean'|       - 1-NN distance (default=euclidean)
+%           'cosine'|            cosine
+%           'rtangent'|          reference single sided tangent
+%           'otangent'|          observation single sided tangent
+%           'atangent')          average single sided tangent
 %
 % Data normalization options:
 %   'normalize',(true|false)   - Normalize training data (default=true)
@@ -242,18 +242,19 @@ while size(varargin,2)>0,
     else
       n=n+2;
     end
-  elseif strcmp(varargin{n},'euclidean') || ...
-         strcmp(varargin{n},'rtangent') || ...
-         strcmp(varargin{n},'otangent') || ...
-         strcmp(varargin{n},'atangent') || ...
-         strcmp(varargin{n},'cosine'),
+  elseif strcmp(varargin{n},'dist') && ( ...
+         strcmp(varargin{n+1},'euclidean') || ...
+         strcmp(varargin{n+1},'rtangent') || ...
+         strcmp(varargin{n+1},'otangent') || ...
+         strcmp(varargin{n+1},'atangent') || ...
+         strcmp(varargin{n+1},'cosine') ),
     dtype.euclidean=false;
     dtype.cosine=false;
     dtype.rtangent=false;
     dtype.otangent=false;
     dtype.atangent=false;
-    eval(['dtype.',varargin{n},'=true;']);
-    n=n+1;
+    eval(['dtype.',varargin{n+1},'=true;']);
+    n=n+2;
   elseif strcmp(varargin{n},'devel'),
     devel=true;
     Y=varargin{n+1};
