@@ -499,8 +499,10 @@ if ~stochastic,
     Vi=Vi+rateV.*V0;
 
     %%% Parameter constraints %%%
-    Wi(Wi<0)=0;
-    Wi=Wi./sum(Wi);
+    sel=Wi>=0;
+    Wi(~sel)=0;
+    Wi(sel)=Wi(sel)+(1-sum(Wi(sel)))./sum(sel);
+    %Wi=Wi./sum(Wi);
 
     %%% Adapt rates %%%
     if adaptrates,
@@ -689,8 +691,10 @@ else
     Vi=Vi+rateV.*V0;
 
     %%% Parameter constraints %%%
-    Wi(Wi<0)=0;
-    Wi=Wi./sum(Wi);
+    sel=Wi>=0;
+    Wi(~sel)=0;
+    Wi(sel)=Wi(sel)+(1-sum(Wi(sel)))./sum(sel);
+    %Wi=Wi./sum(Wi);
 
     %%% Adapt rates %%%
     if adaptrates,

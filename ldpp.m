@@ -163,7 +163,6 @@ linearnorm=false;
 testJ=false;
 crossvalidate=false;
 cv_save=false;
-initP=false;
 
 logfile=2;
 verbose=true;
@@ -172,7 +171,7 @@ verbose=true;
 n=1;
 argerr=false;
 while size(varargin,2)>0,
-  if ~ischar(varargin{n}),% || size(varargin,2)<n+1,
+  if ~ischar(varargin{n}) || size(varargin,2)<n+1,
     argerr=true;
   elseif strcmp(varargin{n},'probemode'),
     eval([varargin{n},'=varargin{n+1};']);
@@ -216,7 +215,6 @@ while size(varargin,2)>0,
          strcmp(varargin{n},'stochfinalexact') || ...
          strcmp(varargin{n},'testJ') || ...
          strcmp(varargin{n},'cv_save') || ...
-         strcmp(varargin{n},'initP') || ...
          strcmp(varargin{n},'verbose'),
     eval([varargin{n},'=varargin{n+1};']);
     if ~islogical(varargin{n+1}),
@@ -296,11 +294,6 @@ if max(size(P0))==1,
     Plabels=repmat(unique(Xlabels),P0,1);
     P0=rand(D,C*P0);
   end
-end
-if initP,
-  bestB=B0;
-  bestP=P0;
-  return;
 end
 
 Dr=size(B0,2);
@@ -982,6 +975,9 @@ if ~stochastic,
     I=I+1;
 
     %%% Update parameters %%%
+    %G=X*fX'+Pi*fP';
+    %Bi=Bi-rateB.*(G-Bi*(G'*Bi));
+    %Bi=Bi+((rateB^2)/2).*(Bi*(G'*Bi)-G*(G'*Bi)-Bi*(G'*G)+Bi*((G'*Bi)*(G'*Bi)));
     Bi=Bi-rateB.*(X*fX'+Pi*fP');
     Pi=Pi-rateP.*(Bi*fP);
 

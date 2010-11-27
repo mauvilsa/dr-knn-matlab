@@ -3,7 +3,7 @@ function [V, Vidx] = tangVects(X, types, varargin)
 % TANGVECTS: Compute Tangent Vectors from Data
 %
 % Usage:
-%   [V, Vidx] = tangVect(X, types, ...)
+%   [V, Vidx] = tangVects(X, types, ...)
 %
 % Input:
 %   X         - Input Data. Each column is an image.
@@ -108,7 +108,9 @@ while size(varargin,2)>0,
   elseif strcmp(varargin{n},'knnprotos'),
     knnprotos=true;
     P=varargin{n+1};
-    Plabels=varargin{n+2};
+    if sum(size(varargin{n+2}))>0,
+      Plabels=varargin{n+2};
+    end
     n=n+3;
   else
     argerr=true;
@@ -177,7 +179,7 @@ if numel(types)~=numel(unique(types)),
 end
 
 uselabels=false;
-if exist('Xlabels','var'),
+if exist('Xlabels','var') || exist('Plabels','var'),
   uselabels=true;
 end
 
