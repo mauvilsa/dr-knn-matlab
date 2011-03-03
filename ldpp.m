@@ -1275,12 +1275,12 @@ function [E, J, fX, fP] = ldpp_index(P, Plabels, X, Xlabels, work)
         fP(:,m)=-sum(Xs(:,is==m),2)+sum(Xd(:,id==m),2);
       end
     elseif work.dtype.cosine,
-      Xs=X.*sfact(:,onesDr)';
-      Xd=X.*dfact(:,onesDr)';
-      fX=P(:,id).*dfact(:,onesDr)'-P(:,is).*sfact(:,onesDr)';
-      for m=1:Np,
-        fP(:,m)=-sum(Xs(:,is==m),2)+sum(Xd(:,id==m),2);
-      end
+      %Xs=X.*sfact(:,onesDr)';
+      %Xd=X.*dfact(:,onesDr)';
+      %fX=P(:,id).*dfact(:,onesDr)'-P(:,is).*sfact(:,onesDr)';
+      %for m=1:Np,
+      %  fP(:,m)=-sum(Xs(:,is==m),2)+sum(Xd(:,id==m),2);
+      %end
     elseif work.dtype.rtangent,
       Xs=(X-P(:,is)).*sfact(:,onesDr)';
       Xd=(X-P(:,id)).*dfact(:,onesDr)';

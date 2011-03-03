@@ -1228,8 +1228,8 @@ function [E, J, fX, fP, fPP] = ldppr_index(P, PP, X, XX, work)
       fP=-permute(sum(fact,2),[1 3 2]);
       fX=sum(fact,3);
     elseif work.dtype.cosine,
-      fP=-permute(sum(reshape(fact(:,onesDr)'.*repmat(X,1,Np),[Dr Nx Np]),2),[1 3 2]);
-      fX=-sum(reshape(fact(:,onesDr)'.*P(:,ind1),[Dr Nx Np]),3);
+      %fP=-permute(sum(reshape(fact(:,onesDr)'.*repmat(X,1,Np),[Dr Nx Np]),2),[1 3 2]);
+      %fX=-sum(reshape(fact(:,onesDr)'.*P(:,ind1),[Dr Nx Np]),3);
     elseif work.dtype.rtangent,
     elseif work.dtype.otangent,
     elseif work.dtype.atangent,
