@@ -46,7 +46,7 @@ function [bestB, bestP, Plabels, info, other] = ldpp(X, Xlabels, B0, P0, Plabels
 %   'linearnorm',(true|false)  - Linear normalize training data (default=false)
 %
 % Stochastic options:
-%   'stochastic',(true|false)  - Stochastic gradient descend (default=true)
+%   'stochastic',(true|false)  - Stochastic gradient descend (default=false)
 %   'stochsamples',SAMP        - Samples per stochastic iteration (default=10)
 %   'stocheck',SIT             - Stats every SIT stoch. iterations (default=100)
 %   'stocheckfull',(true|f...  - Stats for whole data set (default=false)
@@ -664,7 +664,7 @@ if crossvalidate,
     end
     cv_rparts=cv_rparts-1;
   end
-    
+
   Bi=pca(X);
   Bi=Bi(:,1:min(D,32));
 
@@ -975,9 +975,6 @@ if ~stochastic,
     I=I+1;
 
     %%% Update parameters %%%
-    %G=X*fX'+Pi*fP';
-    %Bi=Bi-rateB.*(G-Bi*(G'*Bi));
-    %Bi=Bi+((rateB^2)/2).*(Bi*(G'*Bi)-G*(G'*Bi)-Bi*(G'*G)+Bi*((G'*Bi)*(G'*Bi)));
     Bi=Bi-rateB.*(X*fX'+Pi*fP');
     Pi=Pi-rateP.*(Bi*fP);
 
