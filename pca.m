@@ -25,7 +25,6 @@ function [B, V] = pca(X, varargin)
 % $Date$
 %
 
-%
 % Copyright (C) 2008-2010 Mauricio Villegas (mvillegas AT iti.upv.es)
 %
 % This program is free software: you can redistribute it and/or modify
@@ -40,15 +39,15 @@ function [B, V] = pca(X, varargin)
 %
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <http://www.gnu.org/licenses/>.
-%
-
-if strncmp(X,'-v',2),
-  unix('echo "$Revision$* $Date$*" | sed "s/^:/pca: revision/g; s/ : /[/g; s/ (.*)/]/g;"');
-  return;
-end
 
 fn='pca:';
 minargs=1;
+
+%%% File version %%%
+if ischar(X)
+  unix(['echo "$Revision$* $Date$*" | sed "s/^:/' fn ' revision/g; s/ : /[/g; s/ (.*)/]/g;"']);
+  return;
+end
 
 %%% Default values %%%
 B=[];
@@ -122,7 +121,7 @@ elseif exist('tang','var') && exist('ptfact','var') && ...
 end
 
 if exist('tang','var') && ~cova,
-  fprintf(logfile,'%s warning: using covariance algorithm, tangent vector PCA only possible with covariance algorithm\n',fn);
+  fprintf(logfile,'%s warning: tangent vector PCA only possible with covariance algorithm\n',fn);
   cova=true;
 end
 
