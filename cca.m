@@ -1,4 +1,4 @@
-function [B, V] = cca(X, Xlabels, varargin)
+function [ B, V, BB ] = cca( X, Xlabels, varargin )
 %
 % CCA: Canonical Correlation Analysis
 %
@@ -118,6 +118,9 @@ V=real(diag(V));
 idx=idx(1:min([D,C-1]));
 V=V(idx);
 B=B(:,idx);
+if nargout>2
+  BB=inv(YY)*XY'*B;
+end
 
 if dopca
   B=pcab*B;
