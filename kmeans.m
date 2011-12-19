@@ -1,8 +1,8 @@
-function [mu, ind] = kmeans(X, K, varargin)
+function [ mu, idx ] = kmeans( X, K, varargin )
 %
 % KMEANS: K-means Algorithm
 %
-% [mu, ind] = kmeans(X, K, ...)
+% [ mu, idx ] = kmeans( X, K, ... )
 %
 %   Input:
 %     X       - Data matrix. Each column vector is a data point.
@@ -15,15 +15,14 @@ function [mu, ind] = kmeans(X, K, varargin)
 %
 %   Output:
 %     mu      - Final learned means
-%     ind     - Indexes of the learned means
+%     idx     - Indexes of the learned means
 %
 %
 % $Revision$
 % $Date$
 %
 
-%
-% Copyright (C) 2008-2010 Mauricio Villegas (mvillegas AT iti.upv.es)
+% Copyright (C) 2008-2011 Mauricio Villegas (mvillegas AT iti.upv.es)
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -37,180 +36,160 @@ function [mu, ind] = kmeans(X, K, varargin)
 %
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <http://www.gnu.org/licenses/>.
-%
 
-fn='kmeans:';
+fn = 'kmeans:';
+minargs = 2;
+
+%%% File version %%%
+if ischar(X)
+  unix(['echo "$Revision$* $Date$*" | sed "s/^:/' fn ' revision/g; s/ : /[/g; s/ (.*)/]/g;"']);
+  return;
+end
+
 minargs=2;
 
-[D,N]=size(X);
+[ D, N ] = size(X);
 
-if K==1,
-  mu=mean(X,2);
-  if nargout>1,
-    ind=ones(N,1);
+if K==1
+  mu = mean(X,2);
+  if nargout>1
+    idx = ones(N,1);
   end
   return;
-elseif K==N,
-  mu=X;
-  if nargout>1,
-    ind=[1:N]';
+elseif K==N
+  mu = X;
+  if nargout>1
+    idx = [1:N]';
   end
   return;
 end
 
-maxI=100;
-logfile=2;
-verbose=false;
+maxI = 100;
+logfile = 2;
+verbose = false;
 
-n=1;
-argerr=false;
-while size(varargin,2)>0,
-  if ~ischar(varargin{n}) || size(varargin,2)<n+1,
-    argerr=true;
-  elseif strcmp(varargin{n},'fastmode'),
+n = 1;
+argerr = false;
+while size(varargin,2)>0
+  if ~ischar(varargin{n}) || size(varargin,2)<n+1
+    argerr = true;
+  elseif strcmp(varargin{n},'fastmode')
     eval([varargin{n},'=varargin{n+1};']);
-    n=n+2;
+    n = n+2;
   elseif strcmp(varargin{n},'mu0') || ...
          strcmp(varargin{n},'logfile') || ...
          strcmp(varargin{n},'maxI') || ...
-         strcmp(varargin{n},'seed'),
+         strcmp(varargin{n},'seed')
     eval([varargin{n},'=varargin{n+1};']);
-    if ~isnumeric(varargin{n+1}),
-      argerr=true;
+    if ~isnumeric(varargin{n+1})
+      argerr = true;
     else
-      n=n+2;
+      n = n+2;
     end
-  elseif strcmp(varargin{n},'verbose'),
+  elseif strcmp(varargin{n},'verbose')
     eval([varargin{n},'=varargin{n+1};']);
-    if ~islogical(varargin{n+1}),
-      argerr=true;
+    if ~islogical(varargin{n+1})
+      argerr = true;
     else
-      n=n+2;
+      n = n+2;
     end
   else
-    argerr=true;
+    argerr = true;
   end
-  if argerr || n>size(varargin,2),
+  if argerr || n>size(varargin,2)
     break;
   end
 end
 
-if exist('mu0','var'),
-  [D0, K0]=size(mu0);
+if exist('mu0','var')
+  [ D0, K0 ] = size(mu0);
 else
-  D0=D;
-  K0=K;
+  D0 = D;
+  K0 = K;
 end
 
-if exist('fastmode','var'),
-  ind1=fastmode.ind1;
-  ind2=fastmode.ind2;
-  logfile=fastmode.logfile;
-  verbose=true;
-  fastmode=true;
+if exist('fastmode','var')
+  logfile = fastmode.logfile;
+  verbose = true;
+  fastmode = true;
 else
-  fastmode=false;
+  fastmode = false;
 end
 
-if fastmode,
-elseif argerr,
+if fastmode
+elseif argerr
   fprintf(logfile,'%s error: incorrect input argument %d (%s,%g)\n',fn,n+minargs,varargin{n},varargin{n+1});
   return;
-elseif nargin-size(varargin,2)~=minargs,
+elseif nargin-size(varargin,2)~=minargs
   fprintf(logfile,'%s error: not enough input arguments\n',fn);
   return;
-elseif K>N,
+elseif K>N
   fprintf(logfile,'%s error: K must be lower than the number of data points\n',fn);
   return;
-elseif D0~=D || K0~=K,
+elseif D0~=D || K0~=K
   fprintf(logfile,'%s error: incompatible size of initial means\n',fn);
   return;
 end
 
-if ~verbose,
-  logfile=fopen('/dev/null');
+if ~verbose
+  logfile = fopen('/dev/null');
 end
 
-pind=zeros(N,1);
-if ~exist('mu0','var'),
-  if exist('seed','var'),
+pidx = zeros(N,1);
+if ~exist('mu0','var')
+  if exist('seed','var')
     rand('state',seed);
   end
-  [k,pind]=sort(rand(N,1));
-  mu=X(:,pind(1:K));
+  [ k, pidx ] = sort(rand(N,1));
+  mu = X(:,pidx(1:K));
 else
-  mu=mu0;
+  mu = mu0;
 end
 
-if ~fastmode,
-  onesN=ones(N,1);
-  onesK=ones(K,1);
+cfg.dtype.euclidean = true;
 
-  ind1=[1:N]';
-  ind1=ind1(:,onesK);
-  ind1=ind1(:);
-
-  ind2=1:K;
-  ind2=ind2(onesN,:);
-  ind2=ind2(:);
-end
-
-I=0;
+It = 0;
 
 tic;
 
-while true,
+while true
 
-  if false,
+  dst = dstmat(mu,X,cfg);
+  [ dst, idx ] = min(dst,[],2);
+  
+  fprintf(logfile,'%d %f\n',It,sum(dst)/N);
 
-  ind=onesN;
-  dist=sum((X-mu(:,onesN)).^2);
-  for k=2:K,
-    distk=sum((X-mu(:,k*onesN)).^2);
-    ind(distk<dist)=k;
-    dist(distk<dist)=distk(distk<dist);
-  end
-
-  else
-
-  dist=reshape(sum((X(:,ind1)-mu(:,ind2)).^2,1),N,K);
-  [dist,ind]=min(dist,[],2);
-
-  end
-
-  fprintf(logfile,'%d %f\n',I,sum(dist)/N);
-
-  if I==maxI,
+  if It==maxI
     fprintf(logfile,'%s reached maximum number of iterations\n',fn);
     break;
   end
 
-  if sum(ind~=pind)==0,
+  if sum(idx~=pidx)==0,
     fprintf(logfile,'%s algorithm converged\n',fn);
     break;
   end
 
-  kk=unique(ind);
-  if size(kk,1)~=K,
-    fprintf(logfile,'%s warning: %d empty means, setting them to random samples (I=%d)\n',fn,K-size(kk,1),I);
-    for k=1:K,
-      if sum(kk==k)==0,
-        mu(:,k)=X(:,round((N-1)*rand)+1);
+  kk = unique(idx);
+  if size(kk,1)~=K
+    fprintf(logfile,'%s warning: %d empty means, setting them to random samples (I=%d)\n',fn,K-size(kk,1),It);
+    for k=1:K
+      if sum(kk==k)==0
+        mu(:,k) = X(:,round((N-1)*rand)+1);
       end
     end
   end
 
-  for k=kk',
-    mu(:,k)=mean(X(:,ind==k),2);
+  for k=kk'
+    mu(:,k) = mean(X(:,idx==k),2);
   end
 
-  pind=ind;
-  I=I+1;
+  pidx = idx;
+  It = It+1;
 end
 
-fprintf(logfile,'%s number of iterations: %d\n',fn,I);
-fprintf(logfile,'%s average iteration time (s): %f\n',fn,toc/I);
+fprintf(logfile,'%s number of iterations: %d\n',fn,It);
+fprintf(logfile,'%s average iteration time (s): %f\n',fn,toc/It);
 
-if ~verbose,
+if ~verbose
   fclose(logfile);
 end
