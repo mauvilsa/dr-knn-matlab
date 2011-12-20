@@ -3,7 +3,7 @@ function [ B, V, BB ] = cca( X, Xlabels, varargin )
 % CCA: Canonical Correlation Analysis
 %
 % Usage:
-%   [B, V] = cca(X, Xlabels, ...)
+%   [ B, V ] = cca( X, Xlabels, ... )
 %
 % Input:
 %   X                   - Data matrix. Each column vector is a data point.
@@ -11,6 +11,7 @@ function [ B, V, BB ] = cca( X, Xlabels, varargin )
 %
 % Input (optional):
 %   'dopca',DIM         - Perform PCA before CCA (default=false)
+%   'cor',(true|false)  - Use correlation matrices (default=true)
 %   'pcab',PCAB         - Supply the PCA basis
 %
 % Output:
@@ -46,37 +47,45 @@ if ischar(X)
 end
 
 %%% Default values %%%
-B=[];
-V=[];
+B = [];
+V = [];
 
-dopca=false;
+dopca = false;
+cor = false;
 
-logfile=2;
+logfile = 2;
 
 %%% Input arguments parsing %%%
-n=1;
-argerr=false;
+n = 1;
+argerr = false;
 while size(varargin,2)>0
   if ~ischar(varargin{n})
-    argerr=true;
+    argerr = true;
   elseif strcmp(varargin{n},'dopca') || ...
          strcmp(varargin{n},'pcab')
     eval([varargin{n},'=varargin{n+1};']);
     if ~isnumeric(varargin{n+1})
-      argerr=true;
+      argerr = true;
     else
-      n=n+2;
+      n = n+2;
+    end
+  elseif strcmp(varargin{n},'cor')
+    eval([varargin{n},'=varargin{n+1};']);
+    if ~islogical(varargin{n+1})
+      argerr = true;
+    else
+      n = n+2;
     end
   else
-    argerr=true;
+    argerr = true;
   end
   if argerr || n>size(varargin,2)
     break;
   end
 end
 
-[D,N]=size(X);
-C=size(Xlabels,1);
+[ D, N ] = size(X);
+C = size(Xlabels,1);
 
 %%% Error detection %%%
 if argerr
@@ -91,39 +100,64 @@ elseif size(Xlabels,2)~=N
 end
 
 if exist('pcab','var') && ~dopca
-  dopca=size(pcab,2);
+  dopca = size(pcab,2);
 end
 if dopca
   if ~exist('pcab','var')
-    pcab=pca(X);
+    pcab = pca(X);
   end
   if dopca>size(pcab,2) || dopca<1
     fprintf(logfile,'%s error: inconsistent dimensions in PCA base\n',fn);
     return;
   end
-  pcab=pcab(:,1:dopca);
-  mu=mean(X,2);
-  X=X-repmat(mu,1,N);
-  X=pcab'*X;
-  D=dopca;
+  pcab = pcab(:,1:dopca);
+  mu = mean(X,2);
+  X = X-repmat(mu,1,N);
+  X = pcab'*X;
+  D = dopca;
 end
 
-XX=cor(X');
-YY=cor(Xlabels');
-XY=cor(X',Xlabels');
+%if true
 
-[B,V]=eig(inv(XX)*XY*inv(YY)*XY');
-V=real(diag(V));
-[srt,idx]=sort(-1*V);
-idx=idx(1:min([D,C-1]));
-V=V(idx);
-B=B(:,idx);
+xmu = mean(X,2);
+ymu = mean(Xlabels,2);
+
+XX = (1/(N-1))*(X*X'-N*xmu*xmu');
+YY = (1/(N-1))*(Xlabels*Xlabels'-N*ymu*ymu');
+XY = (1/(N-1))*(X*Xlabels'-N*xmu*ymu');
+
+if cor
+  xsd = std(X,0,2);
+  ysd = std(Xlabels,0,2);
+
+  XX = XX./(xsd*xsd');
+  YY = YY./(ysd*ysd');
+  XY = XY./(xsd*ysd');
+end
+
+%else
+
+%%XX = cor(X');
+%%YY = cor(Xlabels');
+%%XY = cor(X',Xlabels');
+%XX = corrcoef(X');
+%YY = corrcoef(Xlabels');
+%XY = corrcoef(X',Xlabels');
+
+%end
+
+[ B, V ] = eig(inv(XX)*XY*inv(YY)*XY');
+V = real(diag(V));
+[ srt, idx ] = sort(-1*V);
+idx = idx(1:min([D,C]));
+V = V(idx);
+B = B(:,idx);
 if nargout>2
-  BB=inv(YY)*XY'*B;
+  BB = inv(YY)*XY'*B;
 end
 
 if dopca
-  B=pcab*B;
+  B = pcab*B;
 end
 
 if sum(~isfinite(V))>0

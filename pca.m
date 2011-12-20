@@ -25,7 +25,7 @@ function [ B, V ] = pca( X, varargin )
 % $Date$
 %
 
-% Copyright (C) 2008-2010 Mauricio Villegas (mvillegas AT iti.upv.es)
+% Copyright (C) 2008-2011 Mauricio Villegas (mvillegas AT iti.upv.es)
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
