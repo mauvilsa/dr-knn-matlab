@@ -122,11 +122,17 @@ end
 xmu = mean(X,2);
 ymu = mean(Xlabels,2);
 
-XX = (1/(N-1))*(X*X'-N*xmu*xmu');
+%XX = (1/(N-1))*(X*X'-N*xmu*xmu');
+XX = (1/(N-1))*(X*X');
+XX = XX-(N/(N-1))*(xmu*xmu');
 XX = 0.5*(XX+XX');
-YY = (1/(N-1))*(Xlabels*Xlabels'-N*ymu*ymu');
+%YY = (1/(N-1))*(Xlabels*Xlabels'-N*ymu*ymu');
+YY = (1/(N-1))*(Xlabels*Xlabels');
+YY = YY-(N/(N-1))*(ymu*ymu');
 YY = 0.5*(YY+YY');
-XY = (1/(N-1))*(X*Xlabels'-N*xmu*ymu');
+%XY = (1/(N-1))*(X*Xlabels'-N*xmu*ymu');
+XY = (1/(N-1))*(X*Xlabels');
+XY = XY-(N/(N-1))*(N*xmu*ymu');
 
 if cor
   xsd = std(X,0,2);

@@ -130,7 +130,9 @@ mu = mean(X,2);
 if cova
   %X = X-repmat(mu,1,N);
   %covm = (1/(N-1))*(X*X');
-  covm = (1/(N-1))*(X*X'-N*mu*mu');
+  %covm = (1/(N-1))*(X*X'-N*mu*mu');
+  covm = (1/(N-1))*(X*X');
+  covm = covm-(N/(N-1))*(mu*mu');
   covm = 0.5*(covm+covm');
   %%covm = cov(X');
   if exist('tang','var')
