@@ -123,7 +123,9 @@ xmu = mean(X,2);
 ymu = mean(Xlabels,2);
 
 XX = (1/(N-1))*(X*X'-N*xmu*xmu');
+XX = 0.5*(XX+XX');
 YY = (1/(N-1))*(Xlabels*Xlabels'-N*ymu*ymu');
+YY = 0.5*(YY+YY');
 XY = (1/(N-1))*(X*Xlabels'-N*xmu*ymu');
 
 if cor
@@ -146,20 +148,26 @@ end
 
 %end
 
-[ B, V ] = eig(inv(XX)*XY*inv(YY)*XY');
+iYY = inv(YY);
+%[ B, V ] = eig(inv(XX)*XY*iYY*XY');
+[ B, V ] = eig(XY*iYY*XY',XX);
 V = real(diag(V));
 [ srt, idx ] = sort(-1*V);
 idx = idx(1:min([D,C]));
 V = V(idx);
 B = B(:,idx);
+B = B.*repmat(1./sqrt(sum(B.*B,1)),D,1);
 if nargout>2
-  BB = inv(YY)*XY'*B;
+  BB = iYY*XY'*B;
 end
 
 if dopca
   B = pcab*B;
 end
 
+if ~isreal(B)
+  fprintf(logfile,'%s warning: returning complex eigenvectors\n',fn);
+end
 if sum(~isfinite(V))>0
   fprintf(logfile,'%s warning: unexpected eigenvalues\n',fn);
 end

@@ -131,6 +131,7 @@ if cova
   %X = X-repmat(mu,1,N);
   %covm = (1/(N-1))*(X*X');
   covm = (1/(N-1))*(X*X'-N*mu*mu');
+  covm = 0.5*(covm+covm');
   %%covm = cov(X');
   if exist('tang','var')
     L = size(tang,2)/N;
@@ -164,7 +165,7 @@ elseif grma
     R = N;
   end
   for n=1:R
-    A(:,n) = (1/sqrt(N*V(n))).*A(:,n);
+    A(:,n) = (1/sqrt((N-1)*V(n))).*A(:,n);
   end
   B = X*A;
 
