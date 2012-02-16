@@ -156,7 +156,7 @@ if exist('tangVx','var') && ( dtype.otangent || dtype.atangent || dtype.tangent 
 end
 
 cfg.dtype = dtype;
-d = classify_knn_dstmat(P,X,cfg);
+d = classify_nn_dstmat(P,X,cfg);
 
 Clabels = unique(Plabels);
 Cp = size(Clabels,2);
