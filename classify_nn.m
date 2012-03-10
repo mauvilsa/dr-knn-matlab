@@ -188,11 +188,11 @@ if sum(size(Xlabels))~=0
     c = 1;
     for label=Clabels
       sel = Xlabels==label;
-      E(c) = sum(Clabels(A(sel))'~=label)/sum(sel);
+      E(c) = sum(Clabels(A(sel))~=label)/sum(sel);
       c = c+1;
     end
   else
-    E = sum(Clabels(A)~=Xlabels)/Nx;
+    E = sum(Clabels(A')~=Xlabels)/Nx;
   end
 end
 

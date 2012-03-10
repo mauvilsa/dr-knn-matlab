@@ -212,14 +212,14 @@ if sum(size(Xlabels))~=0
     for label=Clabels
       sel = Xlabels==label;
       for k=1:K
-        E(c,k) = sum(Clabels(A(sel,k))'~=label)/sum(sel);
+        E(c,k) = sum(Clabels(A(sel,k))~=label)/sum(sel);
       end
       c = c+1;
     end
   else
     E = zeros(1,K);
     for k=1:K
-      E(k) = sum(Clabels(A(:,k))~=Xlabels)/Nx;
+      E(k) = sum(Clabels(A(:,k)')~=Xlabels)/Nx;
     end
   end
 end
