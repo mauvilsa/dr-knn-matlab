@@ -155,7 +155,6 @@ end
 %end
 
 iYY = inv(YY);
-%[ B, V ] = eig(inv(XX)*XY*iYY*XY');
 [ B, V ] = eig(XY*iYY*XY',XX);
 V = real(diag(V));
 [ srt, idx ] = sort(-1*V);
