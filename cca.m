@@ -6,13 +6,13 @@ function [ B, V, BB ] = cca( X, Xlabels, varargin )
 %   [ B, V ] = cca( X, Xlabels, ... )
 %
 % Input:
-%   X                   - Data matrix. Each column vector is a data point.
-%   Xlabels             - Label matrix. Each column is a label vector.
+%   X                     - Data matrix. Each column vector is a data point.
+%   Xlabels               - Label matrix. Each column is a label vector.
 %
 % Input (optional):
-%   'dopca',DIM         - Perform PCA before CCA (default=false)
-%   'cor',(true|false)  - Use correlation matrices (default=true)
-%   'pcab',PCAB         - Supply the PCA basis
+%   'chkrnk',(true|false) - Check and fix rank of labels (default=false)
+%   'dopca',DIM           - Perform PCA before CCA (default=false)
+%   'pcab',PCAB           - Supply the PCA basis
 %
 % Output:
 %   B                   - Computed CCA basis
@@ -52,6 +52,7 @@ V = [];
 
 dopca = false;
 cor = false;
+chkrnk = false;
 
 logfile = 2;
 
@@ -69,7 +70,8 @@ while size(varargin,2)>0
     else
       n = n+2;
     end
-  elseif strcmp(varargin{n},'cor')
+  elseif strcmp(varargin{n},'chkrnk') || ...
+         strcmp(varargin{n},'cor')
     eval([varargin{n},'=varargin{n+1};']);
     if ~islogical(varargin{n+1})
       argerr = true;
@@ -119,8 +121,20 @@ end
 
 %if true
 
+Xlabels = double(Xlabels);
+
 xmu = mean(X,2);
 ymu = mean(Xlabels,2);
+
+if chkrnk
+  rnkYY = rank(Xlabels*Xlabels'-size(Xlabels,2)*ymu*ymu');
+  if rnkYY<size(Xlabels,1)
+    B = pca(Xlabels);
+    Xlabels = B(:,1:rnkYY)'*Xlabels;
+    ymu = B(:,1:rnkYY)'*ymu;
+    C = rnkYY;
+  end
+end
 
 %XX = (1/(N-1))*(X*X'-N*xmu*xmu');
 XX = (1/(N-1))*(X*X');
