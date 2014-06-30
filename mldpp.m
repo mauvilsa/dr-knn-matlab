@@ -78,7 +78,7 @@ function [bestB, bestP, Plabels, info] = mldpp(X, Xlabels, B0, P0, Plabels, vara
 %
 
 %
-% Copyright (C) 2008-2010 Mauricio Villegas (mvillegas AT iti.upv.es)
+% Copyright (C) 2008-2010 Mauricio Villegas <mauvilsa@upv.es>
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by

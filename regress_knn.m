@@ -22,7 +22,7 @@ function XX = regress_knn(P, PP, K, X, varargin)
 %
 
 %
-% Copyright (C) 2008 Mauricio Villegas (mvillegas AT iti.upv.es)
+% Copyright (C) 2008 Mauricio Villegas <mauvilsa@upv.es>
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by

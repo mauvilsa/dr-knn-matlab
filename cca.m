@@ -22,7 +22,7 @@ function [ B, V, BB ] = cca( X, Xlabels, varargin )
 % $Date$
 %
 
-% Copyright (C) 2011 Mauricio Villegas (mvillegas AT iti.upv.es)
+% Copyright (C) 2011 Mauricio Villegas <mauvilsa@upv.es>
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -53,6 +53,7 @@ V = [];
 dopca = false;
 cor = false;
 chkrnk = false;
+explab = false;
 
 logfile = 2;
 
@@ -71,6 +72,7 @@ while size(varargin,2)>0
       n = n+2;
     end
   elseif strcmp(varargin{n},'chkrnk') || ...
+         strcmp(varargin{n},'explab') || ...
          strcmp(varargin{n},'cor')
     eval([varargin{n},'=varargin{n+1};']);
     if ~islogical(varargin{n+1})
@@ -84,6 +86,16 @@ while size(varargin,2)>0
   if argerr || n>size(varargin,2)
     break;
   end
+end
+
+if explab && size(Xlabels,1)==1
+  oXlabels = Xlabels;
+  lab = unique(oXlabels);
+  Xlabels = zeros(size(lab,2),size(oXlabels,2));
+  for n = 1:size(lab,2)
+    Xlabels(n,oXlabels==lab(n)) = 1;
+  end
+  chkrnk = true;
 end
 
 [ D, N ] = size(X);
